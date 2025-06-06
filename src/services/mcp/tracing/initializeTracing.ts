@@ -19,6 +19,10 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 	const endpoint = config.get<string>("telemetry.mcp.endpoint", "http://localhost:4318/v1/traces")
 	const useConsoleExporter = config.get<boolean>("telemetry.mcp.useConsoleExporter", false)
 
+	// Set environment variables for resource attributes (simpler approach)
+	process.env.OTEL_SERVICE_NAME = "roo-code-mcp"
+	process.env.OTEL_SERVICE_VERSION = version
+
 	// Create exporter based on configuration
 	const traceExporter = useConsoleExporter
 		? new ConsoleSpanExporter()
@@ -27,10 +31,9 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 				headers: {},
 			})
 
-	// Create SDK with resource attributes
+	// Create SDK - it will automatically pick up resource attributes from environment variables
 	sdk = new NodeSDK({
 		traceExporter,
-		serviceName: "roo-code-mcp",
 	})
 
 	// Initialize the SDK
