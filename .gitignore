@@ -45,3 +45,8 @@ logs
 .vercel
 
 claude_code_mcp_config.json
+ai_docs/
+.claude/
+claude_code_mcp_config.json
+ai_docs/tracing/OpenTelemetry
+evals/
