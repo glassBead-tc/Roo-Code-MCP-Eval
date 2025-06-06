@@ -83,9 +83,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	initializeI18n(context.globalState.get("language") ?? formatLanguage(vscode.env.language))
 
 	// Initialize OpenTelemetry tracing for MCP if enabled
+	console.log("🚀 [EXTENSION] About to initialize MCP tracing...")
 	const config = vscode.workspace.getConfiguration("roo-cline")
 	const version = context.extension?.packageJSON?.version ?? "1.0.0"
+	console.log("🚀 [EXTENSION] Config and version obtained, calling initializeMcpTracing...")
 	initializeMcpTracing(config, version)
+	console.log("🚀 [EXTENSION] initializeMcpTracing call completed")
 
 	// Initialize terminal shell execution handlers.
 	TerminalRegistry.initialize()
