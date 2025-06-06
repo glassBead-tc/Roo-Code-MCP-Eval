@@ -41,14 +41,19 @@ export class McpTraceManager {
 	private enabled: boolean = false
 
 	constructor(private eventEmitter: EventEmitter) {
+		console.log("🔍 [McpTraceManager] Constructor called")
+		console.log("🔍 [McpTraceManager] Tracer type:", this.tracer.constructor.name)
+		console.log("🔍 [McpTraceManager] Tracer:", this.tracer)
 		this.setupListeners()
 	}
 
 	public setEnabled(enabled: boolean): void {
+		console.log(`🔍 [McpTraceManager] setEnabled called with: ${enabled}`)
 		this.enabled = enabled
 	}
 
 	private setupListeners(): void {
+		console.log("🔍 [McpTraceManager] Setting up event listeners")
 		// Tool call events
 		this.eventEmitter.on("mcp:tool:start", this.handleToolStart.bind(this))
 		this.eventEmitter.on("mcp:tool:success", this.handleToolSuccess.bind(this))
@@ -66,8 +71,15 @@ export class McpTraceManager {
 	}
 
 	private handleToolStart(event: McpTraceEvent): void {
-		if (!this.enabled) return
+		console.log("🔍 [McpTraceManager] handleToolStart called with event:", event)
+		console.log("🔍 [McpTraceManager] Enabled:", this.enabled)
 
+		if (!this.enabled) {
+			console.log("🔍 [McpTraceManager] Tracing is disabled, returning early")
+			return
+		}
+
+		console.log("🔍 [McpTraceManager] Creating span...")
 		const span = this.tracer.startSpan(`mcp.${event.serverName}.${event.toolName}`, {
 			kind: SpanKind.CLIENT,
 			attributes: {
@@ -80,8 +92,12 @@ export class McpTraceManager {
 			},
 		})
 
+		console.log("🔍 [McpTraceManager] Span created:", span)
+		console.log("🔍 [McpTraceManager] Span type:", span.constructor.name)
+
 		const spanKey = this.getSpanKey(event)
 		this.activeSpans.set(spanKey, span)
+		console.log("🔍 [McpTraceManager] Span stored with key:", spanKey)
 	}
 
 	private handleToolSuccess(event: McpTraceSuccessEvent): void {

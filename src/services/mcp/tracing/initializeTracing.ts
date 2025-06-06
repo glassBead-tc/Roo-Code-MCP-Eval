@@ -68,12 +68,18 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 			try {
 				console.log("🔍 [DEBUG] Creating manual test trace...")
 				const tracer = trace.getTracer("mcp-debug-test")
+				console.log("🔍 [DEBUG] Test tracer type:", tracer.constructor.name)
+				console.log("🔍 [DEBUG] Test tracer:", tracer)
+
 				const span = tracer.startSpan("manual-test-span", {
 					attributes: {
 						"test.type": "manual",
 						"test.purpose": "verify-opentelemetry-setup",
 					},
 				})
+				console.log("🔍 [DEBUG] Test span type:", span.constructor.name)
+				console.log("🔍 [DEBUG] Test span:", span)
+
 				span.addEvent("Manual test event")
 				span.end()
 				console.log("🔍 [DEBUG] Manual test trace created and ended")
