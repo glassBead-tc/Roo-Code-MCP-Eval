@@ -1,6 +1,6 @@
 import { trace, SpanKind, SpanStatusCode, Span, context } from "@opentelemetry/api"
 import { EventEmitter } from "events"
-import { SEMATTRS_RPC_SERVICE, SEMATTRS_RPC_METHOD, SEMATTRS_RPC_SYSTEM } from "@opentelemetry/semantic-conventions"
+import { ATTR_RPC_SERVICE, ATTR_RPC_METHOD, ATTR_RPC_SYSTEM } from "./semconv"
 
 export interface McpTraceEvent {
 	serverName: string
@@ -71,9 +71,9 @@ export class McpTraceManager {
 		const span = this.tracer.startSpan(`mcp.${event.serverName}.${event.toolName}`, {
 			kind: SpanKind.CLIENT,
 			attributes: {
-				[SEMATTRS_RPC_SYSTEM]: "mcp",
-				[SEMATTRS_RPC_SERVICE]: event.serverName,
-				[SEMATTRS_RPC_METHOD]: event.toolName,
+				[ATTR_RPC_SYSTEM]: "mcp",
+				[ATTR_RPC_SERVICE]: event.serverName,
+				[ATTR_RPC_METHOD]: event.toolName,
 				"mcp.source": event.source || "unknown",
 				"mcp.timeout_ms": event.timeout,
 				"mcp.has_arguments": !!event.toolArguments,

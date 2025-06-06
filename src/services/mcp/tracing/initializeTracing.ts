@@ -1,7 +1,6 @@
 import { NodeSDK } from "@opentelemetry/sdk-node"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
 import { ConsoleSpanExporter } from "@opentelemetry/sdk-trace-base"
-import { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } from "@opentelemetry/semantic-conventions"
 import * as vscode from "vscode"
 
 let sdk: NodeSDK | undefined
