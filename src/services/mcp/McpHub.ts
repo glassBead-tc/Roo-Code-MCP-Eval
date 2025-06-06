@@ -18,6 +18,7 @@ import * as path from "path"
 import * as vscode from "vscode"
 import { z } from "zod"
 import { t } from "../../i18n"
+import { EventEmitter } from "events"
 
 import { ClineProvider } from "../../core/webview/ClineProvider"
 import { GlobalFileNames } from "../../shared/globalFileNames"
@@ -32,6 +33,7 @@ import {
 import { fileExistsAtPath } from "../../utils/fs"
 import { arePathsEqual } from "../../utils/path"
 import { injectEnv } from "../../utils/config"
+import { McpTraceManager } from "./tracing/McpTraceManager"
 
 export type McpConnection = {
 	server: McpServer
@@ -122,7 +124,7 @@ const McpSettingsSchema = z.object({
 	mcpServers: z.record(ServerConfigSchema),
 })
 
-export class McpHub {
+export class McpHub extends EventEmitter {
 	private providerRef: WeakRef<ClineProvider>
 	private disposables: vscode.Disposable[] = []
 	private settingsWatcher?: vscode.FileSystemWatcher
@@ -132,14 +134,37 @@ export class McpHub {
 	connections: McpConnection[] = []
 	isConnecting: boolean = false
 	private refCount: number = 0 // Reference counter for active clients
+	private traceManager: McpTraceManager
 
 	constructor(provider: ClineProvider) {
+		super()
 		this.providerRef = new WeakRef(provider)
+		this.traceManager = new McpTraceManager(this)
+		this.initializeTracing()
 		this.watchMcpSettingsFile()
 		this.watchProjectMcpFile()
 		this.setupWorkspaceFoldersWatcher()
 		this.initializeGlobalMcpServers()
 		this.initializeProjectMcpServers()
+	}
+
+	private initializeTracing(): void {
+		// Check if tracing is enabled from VS Code configuration
+		const config = vscode.workspace.getConfiguration("roo-cline")
+		const tracingEnabled = config.get<boolean>("telemetry.mcp.enabled", false)
+		this.traceManager.setEnabled(tracingEnabled)
+
+		// Listen for configuration changes
+		this.disposables.push(
+			vscode.workspace.onDidChangeConfiguration((e) => {
+				if (e.affectsConfiguration("roo-cline.telemetry.mcp.enabled")) {
+					const enabled = vscode.workspace
+						.getConfiguration("roo-cline")
+						.get<boolean>("telemetry.mcp.enabled", false)
+					this.traceManager.setEnabled(enabled)
+				}
+			}),
+		)
 	}
 	/**
 	 * Registers a client (e.g., ClineProvider) using this hub.
@@ -458,8 +483,18 @@ export class McpHub {
 		config: z.infer<typeof ServerConfigSchema>,
 		source: "global" | "project" = "global",
 	): Promise<void> {
+		const startTime = Date.now()
+
 		// Remove existing connection if it exists with the same source
 		await this.deleteConnection(name, source)
+
+		// Emit connection start event
+		this.emit("mcp:connection:start", {
+			serverName: name,
+			source,
+			transport: config.type,
+			timestamp: startTime,
+		})
 
 		try {
 			const client = new Client(
@@ -640,6 +675,14 @@ export class McpHub {
 			connection.server.tools = await this.fetchToolsList(name, source)
 			connection.server.resources = await this.fetchResourcesList(name, source)
 			connection.server.resourceTemplates = await this.fetchResourceTemplatesList(name, source)
+
+			// Emit connection established event
+			this.emit("mcp:connection:established", {
+				serverName: name,
+				source,
+				transport: configInjected.type,
+				timestamp: startTime,
+			})
 		} catch (error) {
 			// Update status with error
 			const connection = this.findConnection(name, source)
@@ -647,6 +690,16 @@ export class McpHub {
 				connection.server.status = "disconnected"
 				this.appendErrorMessage(connection, error instanceof Error ? error.message : `${error}`)
 			}
+
+			// Emit connection error event
+			this.emit("mcp:connection:error", {
+				serverName: name,
+				source,
+				transport: config.type,
+				error: error instanceof Error ? error.message : String(error),
+				timestamp: startTime,
+			})
+
 			throw error
 		}
 	}
@@ -1227,6 +1280,8 @@ export class McpHub {
 	}
 
 	async readResource(serverName: string, uri: string, source?: "global" | "project"): Promise<McpResourceResponse> {
+		const startTime = Date.now()
+
 		const connection = this.findConnection(serverName, source)
 		if (!connection) {
 			throw new Error(`No connection found for server: ${serverName}${source ? ` with source ${source}` : ""}`)
@@ -1234,15 +1289,50 @@ export class McpHub {
 		if (connection.server.disabled) {
 			throw new Error(`Server "${serverName}" is disabled`)
 		}
-		return await connection.client.request(
-			{
-				method: "resources/read",
-				params: {
-					uri,
+
+		// Emit start event
+		this.emit("mcp:resource:start", {
+			serverName,
+			uri,
+			source,
+			timestamp: startTime,
+		})
+
+		try {
+			const result = await connection.client.request(
+				{
+					method: "resources/read",
+					params: {
+						uri,
+					},
 				},
-			},
-			ReadResourceResultSchema,
-		)
+				ReadResourceResultSchema,
+			)
+
+			// Emit success event
+			this.emit("mcp:resource:success", {
+				serverName,
+				uri,
+				source,
+				duration: Date.now() - startTime,
+				responseSize: JSON.stringify(result).length,
+				timestamp: startTime,
+			})
+
+			return result
+		} catch (error) {
+			// Emit error event
+			this.emit("mcp:resource:error", {
+				serverName,
+				uri,
+				source,
+				error: error instanceof Error ? error.message : String(error),
+				duration: Date.now() - startTime,
+				timestamp: startTime,
+			})
+
+			throw error
+		}
 	}
 
 	async callTool(
@@ -1251,6 +1341,8 @@ export class McpHub {
 		toolArguments?: Record<string, unknown>,
 		source?: "global" | "project",
 	): Promise<McpToolCallResponse> {
+		const startTime = Date.now()
+
 		const connection = this.findConnection(serverName, source)
 		if (!connection) {
 			throw new Error(
@@ -1271,19 +1363,53 @@ export class McpHub {
 			timeout = 60 * 1000
 		}
 
-		return await connection.client.request(
-			{
-				method: "tools/call",
-				params: {
-					name: toolName,
-					arguments: toolArguments,
+		// Emit start event
+		this.emit("mcp:tool:start", {
+			serverName,
+			toolName,
+			toolArguments,
+			source,
+			timeout,
+			timestamp: startTime,
+		})
+
+		try {
+			const result = await connection.client.request(
+				{
+					method: "tools/call",
+					params: {
+						name: toolName,
+						arguments: toolArguments,
+					},
 				},
-			},
-			CallToolResultSchema,
-			{
-				timeout,
-			},
-		)
+				CallToolResultSchema,
+				{
+					timeout,
+				},
+			)
+
+			// Emit success event
+			this.emit("mcp:tool:success", {
+				serverName,
+				toolName,
+				duration: Date.now() - startTime,
+				responseSize: JSON.stringify(result).length,
+				timestamp: startTime,
+			})
+
+			return result
+		} catch (error) {
+			// Emit error event
+			this.emit("mcp:tool:error", {
+				serverName,
+				toolName,
+				error: error instanceof Error ? error.message : String(error),
+				duration: Date.now() - startTime,
+				timestamp: startTime,
+			})
+
+			throw error
+		}
 	}
 
 	async toggleToolAlwaysAllow(
@@ -1388,5 +1514,8 @@ export class McpHub {
 			this.settingsWatcher.dispose()
 		}
 		this.disposables.forEach((d) => d.dispose())
+
+		// Clean up trace manager
+		this.traceManager.cleanup()
 	}
 }

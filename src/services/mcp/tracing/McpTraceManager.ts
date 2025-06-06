@@ -1,0 +1,231 @@
+import { trace, SpanKind, SpanStatusCode, Span, context } from "@opentelemetry/api"
+import { EventEmitter } from "events"
+import { SEMATTRS_RPC_SERVICE, SEMATTRS_RPC_METHOD, SEMATTRS_RPC_SYSTEM } from "@opentelemetry/semantic-conventions"
+
+export interface McpTraceEvent {
+	serverName: string
+	toolName: string
+	toolArguments?: Record<string, unknown>
+	source?: "global" | "project"
+	timeout?: number
+	timestamp: number
+}
+
+export interface McpTraceSuccessEvent extends McpTraceEvent {
+	duration: number
+	responseSize: number
+}
+
+export interface McpTraceErrorEvent extends McpTraceEvent {
+	error: string
+	duration: number
+}
+
+export interface McpConnectionEvent {
+	serverName: string
+	source?: "global" | "project"
+	transport?: string
+	timestamp: number
+}
+
+export interface McpResourceEvent {
+	serverName: string
+	uri: string
+	source?: "global" | "project"
+	timestamp: number
+}
+
+export class McpTraceManager {
+	private tracer = trace.getTracer("roo-code-mcp", "1.0.0")
+	private activeSpans = new Map<string, Span>()
+	private enabled: boolean = false
+
+	constructor(private eventEmitter: EventEmitter) {
+		this.setupListeners()
+	}
+
+	public setEnabled(enabled: boolean): void {
+		this.enabled = enabled
+	}
+
+	private setupListeners(): void {
+		// Tool call events
+		this.eventEmitter.on("mcp:tool:start", this.handleToolStart.bind(this))
+		this.eventEmitter.on("mcp:tool:success", this.handleToolSuccess.bind(this))
+		this.eventEmitter.on("mcp:tool:error", this.handleToolError.bind(this))
+
+		// Connection lifecycle events
+		this.eventEmitter.on("mcp:connection:start", this.handleConnectionStart.bind(this))
+		this.eventEmitter.on("mcp:connection:established", this.handleConnectionEstablished.bind(this))
+		this.eventEmitter.on("mcp:connection:error", this.handleConnectionError.bind(this))
+
+		// Resource access events
+		this.eventEmitter.on("mcp:resource:start", this.handleResourceStart.bind(this))
+		this.eventEmitter.on("mcp:resource:success", this.handleResourceSuccess.bind(this))
+		this.eventEmitter.on("mcp:resource:error", this.handleResourceError.bind(this))
+	}
+
+	private handleToolStart(event: McpTraceEvent): void {
+		if (!this.enabled) return
+
+		const span = this.tracer.startSpan(`mcp.${event.serverName}.${event.toolName}`, {
+			kind: SpanKind.CLIENT,
+			attributes: {
+				[SEMATTRS_RPC_SYSTEM]: "mcp",
+				[SEMATTRS_RPC_SERVICE]: event.serverName,
+				[SEMATTRS_RPC_METHOD]: event.toolName,
+				"mcp.source": event.source || "unknown",
+				"mcp.timeout_ms": event.timeout,
+				"mcp.has_arguments": !!event.toolArguments,
+			},
+		})
+
+		const spanKey = this.getSpanKey(event)
+		this.activeSpans.set(spanKey, span)
+	}
+
+	private handleToolSuccess(event: McpTraceSuccessEvent): void {
+		if (!this.enabled) return
+
+		const span = this.getActiveSpan(event)
+		if (span) {
+			span.setAttributes({
+				"mcp.duration_ms": event.duration,
+				"mcp.response_size_bytes": event.responseSize,
+			})
+			span.setStatus({ code: SpanStatusCode.OK })
+			span.end()
+			this.activeSpans.delete(this.getSpanKey(event))
+		}
+	}
+
+	private handleToolError(event: McpTraceErrorEvent): void {
+		if (!this.enabled) return
+
+		const span = this.getActiveSpan(event)
+		if (span) {
+			span.recordException(new Error(event.error))
+			span.setStatus({
+				code: SpanStatusCode.ERROR,
+				message: event.error,
+			})
+			span.setAttributes({
+				"mcp.duration_ms": event.duration,
+			})
+			span.end()
+			this.activeSpans.delete(this.getSpanKey(event))
+		}
+	}
+
+	private handleConnectionStart(event: McpConnectionEvent): void {
+		if (!this.enabled) return
+
+		const span = this.tracer.startSpan(`mcp.connection.${event.serverName}`, {
+			kind: SpanKind.CLIENT,
+			attributes: {
+				"mcp.server": event.serverName,
+				"mcp.source": event.source || "unknown",
+				"mcp.transport": event.transport || "unknown",
+			},
+		})
+
+		const spanKey = `connection-${event.serverName}-${event.timestamp}`
+		this.activeSpans.set(spanKey, span)
+	}
+
+	private handleConnectionEstablished(event: McpConnectionEvent): void {
+		if (!this.enabled) return
+
+		const spanKey = `connection-${event.serverName}-${event.timestamp}`
+		const span = this.activeSpans.get(spanKey)
+		if (span) {
+			span.setStatus({ code: SpanStatusCode.OK })
+			span.end()
+			this.activeSpans.delete(spanKey)
+		}
+	}
+
+	private handleConnectionError(event: McpConnectionEvent & { error: string }): void {
+		if (!this.enabled) return
+
+		const spanKey = `connection-${event.serverName}-${event.timestamp}`
+		const span = this.activeSpans.get(spanKey)
+		if (span) {
+			span.recordException(new Error(event.error))
+			span.setStatus({
+				code: SpanStatusCode.ERROR,
+				message: event.error,
+			})
+			span.end()
+			this.activeSpans.delete(spanKey)
+		}
+	}
+
+	private handleResourceStart(event: McpResourceEvent): void {
+		if (!this.enabled) return
+
+		const span = this.tracer.startSpan(`mcp.resource.${event.serverName}`, {
+			kind: SpanKind.CLIENT,
+			attributes: {
+				"mcp.server": event.serverName,
+				"mcp.resource.uri": event.uri,
+				"mcp.source": event.source || "unknown",
+			},
+		})
+
+		const spanKey = `resource-${event.serverName}-${event.timestamp}`
+		this.activeSpans.set(spanKey, span)
+	}
+
+	private handleResourceSuccess(event: McpResourceEvent & { duration: number; responseSize: number }): void {
+		if (!this.enabled) return
+
+		const spanKey = `resource-${event.serverName}-${event.timestamp}`
+		const span = this.activeSpans.get(spanKey)
+		if (span) {
+			span.setAttributes({
+				"mcp.duration_ms": event.duration,
+				"mcp.response_size_bytes": event.responseSize,
+			})
+			span.setStatus({ code: SpanStatusCode.OK })
+			span.end()
+			this.activeSpans.delete(spanKey)
+		}
+	}
+
+	private handleResourceError(event: McpResourceEvent & { error: string; duration: number }): void {
+		if (!this.enabled) return
+
+		const spanKey = `resource-${event.serverName}-${event.timestamp}`
+		const span = this.activeSpans.get(spanKey)
+		if (span) {
+			span.recordException(new Error(event.error))
+			span.setStatus({
+				code: SpanStatusCode.ERROR,
+				message: event.error,
+			})
+			span.setAttributes({
+				"mcp.duration_ms": event.duration,
+			})
+			span.end()
+			this.activeSpans.delete(spanKey)
+		}
+	}
+
+	private getSpanKey(event: McpTraceEvent): string {
+		return `${event.serverName}-${event.toolName}-${event.timestamp}`
+	}
+
+	private getActiveSpan(event: McpTraceEvent): Span | undefined {
+		return this.activeSpans.get(this.getSpanKey(event))
+	}
+
+	public cleanup(): void {
+		// End any remaining active spans
+		this.activeSpans.forEach((span) => {
+			span.setStatus({ code: SpanStatusCode.ERROR, message: "Cleanup called with active span" })
+			span.end()
+		})
+		this.activeSpans.clear()
+	}
+}

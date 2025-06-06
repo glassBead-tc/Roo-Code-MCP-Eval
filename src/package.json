@@ -334,6 +334,21 @@
 					"type": "boolean",
 					"default": false,
 					"description": "%settings.rooCodeCloudEnabled.description%"
+				},
+				"roo-cline.telemetry.mcp.enabled": {
+					"type": "boolean",
+					"default": false,
+					"description": "Enable OpenTelemetry tracing for MCP tool calls"
+				},
+				"roo-cline.telemetry.mcp.endpoint": {
+					"type": "string",
+					"default": "http://localhost:4318/v1/traces",
+					"description": "OTLP endpoint for MCP traces"
+				},
+				"roo-cline.telemetry.mcp.useConsoleExporter": {
+					"type": "boolean",
+					"default": false,
+					"description": "Use console exporter for debugging (outputs traces to console instead of OTLP endpoint)"
 				}
 			}
 		}

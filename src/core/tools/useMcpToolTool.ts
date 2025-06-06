@@ -76,10 +76,19 @@ export async function useMcpToolTool(
 			// Now execute the tool
 			await cline.say("mcp_server_request_started") // same as browser_action_result
 
-			const toolResult = await cline.providerRef
-				.deref()
-				?.getMcpHub()
-				?.callTool(server_name, tool_name, parsedArguments)
+			// Get the MCP hub to emit high-level execution events
+			const mcpHub = cline.providerRef.deref()?.getMcpHub()
+			if (mcpHub) {
+				// Emit high-level tool execution start event
+				mcpHub.emit("mcp:tool:execution:start", {
+					serverName: server_name,
+					toolName: tool_name,
+					requiresApproval: true,
+					timestamp: Date.now(),
+				})
+			}
+
+			const toolResult = await mcpHub?.callTool(server_name, tool_name, parsedArguments)
 
 			// TODO: add progress indicator and ability to parse images and non-text responses
 			const toolResultPretty =
@@ -100,6 +109,16 @@ export async function useMcpToolTool(
 
 			await cline.say("mcp_server_response", toolResultPretty)
 			pushToolResult(formatResponse.toolResult(toolResultPretty))
+
+			// Emit high-level tool execution complete event
+			if (mcpHub) {
+				mcpHub.emit("mcp:tool:execution:complete", {
+					serverName: server_name,
+					toolName: tool_name,
+					hasError: toolResult?.isError,
+					timestamp: Date.now(),
+				})
+			}
 
 			return
 		}

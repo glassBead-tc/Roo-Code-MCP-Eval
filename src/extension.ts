@@ -28,6 +28,7 @@ import { McpServerManager } from "./services/mcp/McpServerManager"
 import { CodeIndexManager } from "./services/code-index/manager"
 import { migrateSettings } from "./utils/migrateSettings"
 import { API } from "./extension/api"
+import { initializeMcpTracing, shutdownMcpTracing } from "./services/mcp/tracing/initializeTracing"
 
 import {
 	handleUri,
@@ -80,6 +81,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Initialize i18n for internationalization support
 	initializeI18n(context.globalState.get("language") ?? formatLanguage(vscode.env.language))
+
+	// Initialize OpenTelemetry tracing for MCP if enabled
+	const config = vscode.workspace.getConfiguration("roo-cline")
+	const version = context.extension?.packageJSON?.version ?? "1.0.0"
+	initializeMcpTracing(config, version)
 
 	// Initialize terminal shell execution handlers.
 	TerminalRegistry.initialize()
@@ -199,4 +205,5 @@ export async function deactivate() {
 	await McpServerManager.cleanup(extensionContext)
 	TelemetryService.instance.shutdown()
 	TerminalRegistry.cleanup()
+	await shutdownMcpTracing()
 }
