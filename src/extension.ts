@@ -70,17 +70,25 @@ export async function activate(context: vscode.ExtensionContext) {
 		console.warn("Failed to register PostHogTelemetryClient:", error)
 	}
 
+	console.log("🚀 [EXTENSION] PostHog setup completed, proceeding with cloud service initialization...")
+
 	// Create logger for cloud services
 	const cloudLogger = createDualLogger(createOutputChannelLogger(outputChannel))
 
+	console.log("🚀 [EXTENSION] Cloud logger created, initializing cloud service...")
+
 	// Initialize Roo Code Cloud service.
+	console.log("🚀 [EXTENSION] About to create CloudService instance...")
 	await CloudService.createInstance(context, {
 		stateChanged: () => ClineProvider.getVisibleInstance()?.postStateToWebview(),
 		log: cloudLogger,
 	})
+	console.log("🚀 [EXTENSION] CloudService instance created successfully!")
 
 	// Initialize i18n for internationalization support
+	console.log("🚀 [EXTENSION] Initializing i18n...")
 	initializeI18n(context.globalState.get("language") ?? formatLanguage(vscode.env.language))
+	console.log("🚀 [EXTENSION] i18n initialized successfully!")
 
 	// Initialize OpenTelemetry tracing for MCP if enabled
 	console.log("🚀 [EXTENSION] About to initialize MCP tracing...")
