@@ -1,10 +1,14 @@
 import { NodeSDK } from "@opentelemetry/sdk-node"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
-import { ConsoleSpanExporter } from "@opentelemetry/sdk-trace-base"
+import { ConsoleSpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base"
+import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node"
+import { defaultResource, resourceFromAttributes } from "@opentelemetry/resources"
 import { trace } from "@opentelemetry/api"
 import * as vscode from "vscode"
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "./semconv"
 
 let sdk: NodeSDK | undefined
+let tracerProvider: NodeTracerProvider | undefined
 
 export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, version: string): void {
 	// 🔍 DEBUG: Log function entry and configuration
@@ -30,13 +34,13 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 	const endpoint = config.get<string>("telemetry.mcp.endpoint", "http://localhost:4318/v1/traces")
 	const useConsoleExporter = config.get<boolean>("telemetry.mcp.useConsoleExporter", false)
 
-	// Set environment variables for resource attributes (simpler approach)
-	process.env.OTEL_SERVICE_NAME = "roo-code-mcp"
-	process.env.OTEL_SERVICE_VERSION = version
-	console.log("🔍 [DEBUG] Set environment variables:", {
-		OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
-		OTEL_SERVICE_VERSION: process.env.OTEL_SERVICE_VERSION,
-	})
+	// Create resource with service information
+	const resource = defaultResource().merge(
+		resourceFromAttributes({
+			[ATTR_SERVICE_NAME]: "roo-code-mcp",
+			[ATTR_SERVICE_VERSION]: version,
+		}),
+	)
 
 	// Create exporter based on configuration
 	const traceExporter = useConsoleExporter
@@ -51,9 +55,20 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 		useConsoleExporter ? "ConsoleSpanExporter" : `OTLPTraceExporter(${endpoint})`,
 	)
 
-	// Create SDK - it will automatically pick up resource attributes from environment variables
+	// Create tracer provider with span processor configured
+	tracerProvider = new NodeTracerProvider({
+		resource,
+		spanProcessors: [new SimpleSpanProcessor(traceExporter)],
+	})
+
+	// Register the tracer provider globally - THIS IS THE KEY STEP!
+	tracerProvider.register()
+	console.log("🔍 [DEBUG] Tracer provider registered globally")
+
+	// Create SDK with the tracer provider
 	sdk = new NodeSDK({
 		traceExporter,
+		resource,
 	})
 
 	console.log("🔍 [DEBUG] Created NodeSDK")
@@ -67,7 +82,7 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 		setTimeout(() => {
 			try {
 				console.log("🔍 [DEBUG] Creating manual test trace...")
-				const tracer = trace.getTracer("mcp-debug-test")
+				const tracer = trace.getTracer("mcp-debug-test", "1.0.0")
 				console.log("🔍 [DEBUG] Test tracer type:", tracer.constructor.name)
 				console.log("🔍 [DEBUG] Test tracer:", tracer)
 
