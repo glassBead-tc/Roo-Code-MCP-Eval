@@ -1,14 +1,16 @@
 import { NodeSDK } from "@opentelemetry/sdk-node"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
 import { ConsoleSpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base"
-import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node"
-import { defaultResource, resourceFromAttributes } from "@opentelemetry/resources"
+import { AlwaysOnSampler } from "@opentelemetry/sdk-trace-base"
 import { trace } from "@opentelemetry/api"
 import * as vscode from "vscode"
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "./semconv"
+import { resourceFromAttributes } from "@opentelemetry/resources"
+import { McpInstrumentation } from "../instrumentation/McpInstrumentation"
+import { McpBenchmarkProcessor } from "../../../../packages/evals/src/benchmark/McpBenchmarkProcessor.js"
+import { client as dbClient } from "../../../../packages/evals/src/db/db.js"
 
 let sdk: NodeSDK | undefined
-let tracerProvider: NodeTracerProvider | undefined
 
 export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, version: string): void {
 	// 🔍 DEBUG: Log function entry and configuration
@@ -19,11 +21,13 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 		version,
 	})
 
-	// Check if tracing is enabled
-	if (!config.get<boolean>("telemetry.mcp.enabled", false)) {
+	// Check if tracing is enabled (TEMPORARILY FORCED ON FOR TESTING)
+	const enabled = config.get<boolean>("telemetry.mcp.enabled", false) || true // FORCE ON FOR TESTING
+	if (!enabled) {
 		console.log("🔍 [DEBUG] MCP tracing is disabled, returning early")
 		return
 	}
+	console.log("🔍 [DEBUG] MCP tracing is ENABLED - continuing with initialization")
 
 	// Clean up existing SDK if any
 	if (sdk) {
@@ -34,13 +38,11 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 	const endpoint = config.get<string>("telemetry.mcp.endpoint", "http://localhost:4318/v1/traces")
 	const useConsoleExporter = config.get<boolean>("telemetry.mcp.useConsoleExporter", false)
 
-	// Create resource with service information
-	const resource = defaultResource().merge(
-		resourceFromAttributes({
-			[ATTR_SERVICE_NAME]: "roo-code-mcp",
-			[ATTR_SERVICE_VERSION]: version,
-		}),
-	)
+	// Create resource with semantic conventions
+	const resource = resourceFromAttributes({
+		[ATTR_SERVICE_NAME]: "roo-code-mcp",
+		[ATTR_SERVICE_VERSION]: version,
+	})
 
 	// Create exporter based on configuration
 	const traceExporter = useConsoleExporter
@@ -55,23 +57,16 @@ export function initializeMcpTracing(config: vscode.WorkspaceConfiguration, vers
 		useConsoleExporter ? "ConsoleSpanExporter" : `OTLPTraceExporter(${endpoint})`,
 	)
 
-	// Create tracer provider with span processor configured
-	tracerProvider = new NodeTracerProvider({
-		resource,
-		spanProcessors: [new SimpleSpanProcessor(traceExporter)],
-	})
-
-	// Register the tracer provider globally - THIS IS THE KEY STEP!
-	tracerProvider.register()
-	console.log("🔍 [DEBUG] Tracer provider registered globally")
-
-	// Create SDK with the tracer provider
+	// Create SDK with MCP instrumentation
 	sdk = new NodeSDK({
-		traceExporter,
 		resource,
+		traceExporter,
+		sampler: new AlwaysOnSampler(), // Explicitly sample all spans
+		spanProcessors: [new SimpleSpanProcessor(traceExporter), new McpBenchmarkProcessor(dbClient)], // Use spanProcessors (plural) to avoid deprecation
+		instrumentations: [new McpInstrumentation()], // Auto-instrument MCP calls
 	})
 
-	console.log("🔍 [DEBUG] Created NodeSDK")
+	console.log("🔍 [DEBUG] Created NodeSDK with AlwaysOnSampler and SimpleSpanProcessor")
 
 	// Initialize the SDK
 	try {
