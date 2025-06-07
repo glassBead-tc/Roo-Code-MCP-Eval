@@ -7,6 +7,7 @@ import * as vscode from "vscode"
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "./semconv"
 import { resourceFromAttributes } from "@opentelemetry/resources"
 import { McpInstrumentation } from "../instrumentation/McpInstrumentation"
+// @ts-ignore TS6059: File is not under 'rootDir'. 'rootDir' is expected to contain all source files.
 import { McpBenchmarkProcessor } from "@evals/benchmark/McpBenchmarkProcessor.js"
 import { client as dbClient } from "@evals/db/db.js"
 
