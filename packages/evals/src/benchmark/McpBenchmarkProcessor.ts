@@ -22,9 +22,7 @@ export class McpBenchmarkProcessor implements SpanProcessor {
 				"firecrawl",
 				"context7",
 				"perplexity-ask",
-				"memory",
-				"sequential-thinking",
-				"python-to-typescript",
+				
 			].includes(serverName)
 		)
 			return
