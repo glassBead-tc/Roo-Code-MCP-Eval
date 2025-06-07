@@ -7,8 +7,8 @@ import * as vscode from "vscode"
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "./semconv"
 import { resourceFromAttributes } from "@opentelemetry/resources"
 import { McpInstrumentation } from "../instrumentation/McpInstrumentation"
-import { McpBenchmarkProcessor } from "../../../../packages/evals/src/benchmark/McpBenchmarkProcessor.js"
-import { client as dbClient } from "../../../../packages/evals/src/db/db.js"
+import { McpBenchmarkProcessor } from "@evals/benchmark/McpBenchmarkProcessor.js"
+import { client as dbClient } from "@evals/db/db.js"
 
 let sdk: NodeSDK | undefined
 

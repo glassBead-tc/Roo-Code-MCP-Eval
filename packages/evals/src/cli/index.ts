@@ -3,7 +3,7 @@ import * as path from "path"
 
 import pWaitFor from "p-wait-for"
 import { execa, parseCommandString } from "execa"
-import { command, run, number, positional } from "cmd-ts"
+import { command, run, number, option, string } from "cmd-ts"
 import psTree from "ps-tree"
 
 import { RooCodeEventName, IpcOrigin, IpcMessageType, TaskCommandName } from "@roo-code/types"
@@ -13,14 +13,18 @@ import {
 	type Run,
 	type Task,
 	findRun,
+	createRun,
 	finishRun,
 	getTasks,
+	createTask,
 	updateTask,
 	createTaskMetrics,
 	updateTaskMetrics,
 	createToolError,
 } from "../db/index.js"
-import { type ExerciseLanguage, exercisesPath } from "../exercises/index.js"
+import { type ExerciseLanguage, exerciseLanguages, exercisesPath, getExercisesForLanguage } from "../exercises/index.js"
+import { McpBenchmarkProcessor } from "../benchmark/McpBenchmarkProcessor.js"
+import { client as dbClient } from "../db/db.js"
 
 type TaskResult = { success: boolean }
 type TaskPromise = Promise<TaskResult>
@@ -38,6 +42,7 @@ const testCommands: Record<ExerciseLanguage, { commands: string[]; timeout?: num
 }
 
 const runEvals = async (id: number) => {
+	const mcpBenchmarkProcessor = new McpBenchmarkProcessor(dbClient)
 	const run = await findRun(id)
 	const tasks = await getTasks(run.id)
 
@@ -56,7 +61,8 @@ const runEvals = async (id: number) => {
 
 	const runningPromises: TaskPromise[] = []
 
-	const processTask = async (task: Task, delay = 0) => {
+	const processTask = async (runId: number, task: Task, delay = 0) => {
+		await mcpBenchmarkProcessor.startTaskBenchmark(task.id, runId, "default_mcp_server", "default_user_intent") // Placeholders for server and intent
 		if (task.finishedAt === null) {
 			await new Promise((resolve) => setTimeout(resolve, delay))
 			await runExercise({ run, task, server })
@@ -74,11 +80,12 @@ const runEvals = async (id: number) => {
 
 			return { success: passed }
 		} else {
+			await mcpBenchmarkProcessor.finishTaskBenchmark(task.id, task.passed ?? false, 0)
 			return { success: task.passed }
 		}
 	}
 
-	const processTaskResult = async (task: Task, promise: TaskPromise) => {
+	const processTaskResult = async (_task: Task, promise: TaskPromise) => {
 		const index = runningPromises.indexOf(promise)
 
 		if (index > -1) {
@@ -89,7 +96,7 @@ const runEvals = async (id: number) => {
 	let delay = TASK_START_DELAY
 
 	for (const task of tasks) {
-		const promise = processTask(task, delay)
+		const promise = processTask(run.id, task, delay)
 		delay = delay + TASK_START_DELAY
 		runningPromises.push(promise)
 		promise.then(() => processTaskResult(task, promise))
@@ -417,16 +424,123 @@ const runUnitTest = async ({ task }: { task: Task }) => {
 	return passed
 }
 
+const createAndRunEvals = async (args: {
+	model?: string
+	include?: string
+	exclude?: string
+	concurrent?: number
+	description?: string
+}) => {
+	const model = args.model || "claude-3-5-haiku-20241022"
+	const concurrency = args.concurrent || 2
+	const includeLanguages = args.include ? (args.include.split(",") as ExerciseLanguage[]) : [...exerciseLanguages]
+	const excludeLanguages = args.exclude ? (args.exclude.split(",") as ExerciseLanguage[]) : []
+
+	// Validate languages
+	for (const lang of includeLanguages) {
+		if (!exerciseLanguages.includes(lang as ExerciseLanguage)) {
+			throw new Error(`Invalid language: ${lang}. Valid languages are: ${exerciseLanguages.join(", ")}`)
+		}
+	}
+
+	const languages = includeLanguages.filter((lang) => !excludeLanguages.includes(lang))
+
+	if (languages.length === 0) {
+		throw new Error("No languages selected for evaluation.")
+	}
+
+	// Create socket path
+	const pid = process.pid
+	const socketPath = `/tmp/roo-code-ipc-${pid}.sock`
+
+	// Create run
+	const run = await createRun({
+		model,
+		description: args.description,
+		socketPath,
+		pid,
+		concurrency,
+		passed: 0,
+		failed: 0,
+		settings: {
+			apiProvider: "openrouter",
+			openRouterModelId: model,
+		},
+	})
+
+	console.log(`Created run #${run.id} with model ${model}`)
+	console.log(`Testing languages: ${languages.join(", ")}`)
+
+	// Create tasks for each language/exercise combination
+	for (const language of languages) {
+		const exercises = await getExercisesForLanguage(language)
+		for (const exercise of exercises) {
+			await createTask({
+				runId: run.id,
+				language,
+				exercise,
+			})
+		}
+		console.log(`Created ${exercises.length} tasks for ${language}`)
+	}
+
+	// Run the evaluation
+	return runEvals(run.id)
+}
+
 const main = async () => {
 	const result = await run(
 		command({
 			name: "cli",
-			description: "Execute an eval run.",
+			description: "Execute evaluation runs for Roo Code.",
 			version: "0.0.0",
 			args: {
-				runId: positional({ type: number, displayName: "runId" }),
+				runId: option({
+					type: number,
+					long: "run-id",
+					short: "r",
+					description: "Existing run ID to execute",
+				}),
+				model: option({
+					type: string,
+					long: "model",
+					short: "m",
+					description: "Model to use (default: claude-3-5-haiku-20241022)",
+				}),
+				include: option({
+					type: string,
+					long: "include",
+					short: "i",
+					description: "Comma-separated list of languages to include",
+				}),
+				exclude: option({
+					type: string,
+					long: "exclude",
+					short: "e",
+					description: "Comma-separated list of languages to exclude",
+				}),
+				concurrent: option({
+					type: number,
+					long: "concurrent",
+					short: "c",
+					description: "Number of concurrent tasks (default: 2)",
+				}),
+				description: option({
+					type: string,
+					long: "description",
+					short: "d",
+					description: "Description for the run",
+				}),
 			},
-			handler: (args) => runEvals(args.runId),
+			handler: async (args) => {
+				// If runId is provided, just run the existing evaluation
+				if (args.runId !== undefined) {
+					return runEvals(args.runId)
+				}
+
+				// Otherwise, create a new run with the provided options
+				return createAndRunEvals(args)
+			},
 		}),
 		process.argv.slice(2),
 	)

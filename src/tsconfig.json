@@ -13,6 +13,10 @@
 		"noUnusedLocals": false,
 		"resolveJsonModule": true,
 		"rootDir": ".",
+		"baseUrl": ".",
+		"paths": {
+			"@evals/*": ["../packages/evals/src/*"]
+		},
 		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
