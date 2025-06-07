@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, real, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core"
+import { pgTable, text, timestamp, integer, real, boolean, jsonb, uniqueIndex, serial } from "drizzle-orm/pg-core"
 import { relations } from "drizzle-orm"
 
 import type { RooCodeSettings, ToolName, ToolUsage } from "@roo-code/types"
@@ -117,4 +117,42 @@ export type UpdateToolError = Partial<Omit<ToolError, "id" | "createdAt">>
  * schema
  */
 
-export const schema = { runs, runsRelations, tasks, tasksRelations, taskMetrics }
+export const mcpRetrievalBenchmarks = pgTable("mcp_retrieval_benchmarks", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	taskId: integer("task_id")
+		.references(() => tasks.id)
+		.notNull(),
+	mcpServerName: text("mcp_server_name").notNull(),
+	userIntent: text("user_intent").notNull(),
+	totalSteps: integer("total_steps").notNull(),
+	codeExecutionSuccess: boolean("code_execution_success"),
+	errorCount: integer("error_count").default(0),
+	createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+export const mcpRetrievalCalls = pgTable("mcp_retrieval_calls", {
+	id: serial("id").primaryKey(),
+	benchmarkId: integer("benchmark_id")
+		.references(() => mcpRetrievalBenchmarks.id)
+		.notNull(),
+	stepNumber: integer("step_number").notNull(),
+	request: jsonb("request").notNull(),
+	response: jsonb("response").notNull(),
+	responseSize: integer("response_size").notNull(),
+	createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+export const schema = {
+	runs,
+	runsRelations,
+	tasks,
+	tasksRelations,
+	taskMetrics,
+	toolErrors,
+	toolErrorsRelations,
+	mcpRetrievalBenchmarks,
+	mcpRetrievalCalls,
+}
