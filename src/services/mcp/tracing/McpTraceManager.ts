@@ -36,15 +36,19 @@ export interface McpResourceEvent {
 }
 
 export class McpTraceManager {
-	private tracer = trace.getTracer("roo-code-mcp", "1.0.0")
 	private activeSpans = new Map<string, Span>()
 	private enabled: boolean = false
 
 	constructor(private eventEmitter: EventEmitter) {
 		console.log("🔍 [McpTraceManager] Constructor called")
-		console.log("🔍 [McpTraceManager] Tracer type:", this.tracer.constructor.name)
-		console.log("🔍 [McpTraceManager] Tracer:", this.tracer)
 		this.setupListeners()
+	}
+
+	private get tracer() {
+		// Get tracer lazily to ensure it uses the configured global provider
+		const tracer = trace.getTracer("roo-code-mcp", "1.0.0")
+		console.log("🔍 [McpTraceManager] Getting tracer - type:", tracer.constructor.name)
+		return tracer
 	}
 
 	public setEnabled(enabled: boolean): void {
@@ -89,6 +93,8 @@ export class McpTraceManager {
 				"mcp.source": event.source || "unknown",
 				"mcp.timeout_ms": event.timeout,
 				"mcp.has_arguments": !!event.toolArguments,
+				// Add request data for the processor
+				"mcp.request": event.toolArguments ? JSON.stringify(event.toolArguments) : "{}",
 			},
 		})
 

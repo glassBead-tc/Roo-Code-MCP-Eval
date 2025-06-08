@@ -13,6 +13,7 @@ export const runs = pgTable("runs", {
 	id: integer().primaryKey().generatedAlwaysAsIdentity(),
 	taskMetricsId: integer("task_metrics_id").references(() => taskMetrics.id),
 	model: text().notNull(),
+	mcpServer: text("mcp_server"),
 	description: text(),
 	settings: jsonb().$type<RooCodeSettings>(),
 	pid: integer(),
@@ -142,6 +143,47 @@ export const mcpRetrievalCalls = pgTable("mcp_retrieval_calls", {
 	request: jsonb("request").notNull(),
 	response: jsonb("response").notNull(),
 	responseSize: integer("response_size").notNull(),
+	duration: integer("duration_ms"),
+	errorMessage: text("error_message"),
+	source: text("source"), // 'global' or 'project'
+	timeout: integer("timeout_ms"),
+	createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+/**
+ * MCP connection events
+ */
+export const mcpConnectionEvents = pgTable("mcp_connection_events", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	taskId: integer("task_id").references(() => tasks.id),
+	serverName: text("server_name").notNull(),
+	eventType: text("event_type").notNull(), // 'start', 'established', 'error'
+	source: text("source"), // 'global' or 'project'
+	transport: text("transport"), // transport type used
+	duration: integer("duration_ms"),
+	errorMessage: text("error_message"),
+	createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+/**
+ * MCP resource access events
+ */
+export const mcpResourceEvents = pgTable("mcp_resource_events", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	taskId: integer("task_id").references(() => tasks.id),
+	serverName: text("server_name").notNull(),
+	uri: text("uri").notNull(),
+	eventType: text("event_type").notNull(), // 'start', 'success', 'error'
+	source: text("source"), // 'global' or 'project'
+	duration: integer("duration_ms"),
+	responseSize: integer("response_size"),
+	errorMessage: text("error_message"),
 	createdAt: timestamp("created_at").notNull().defaultNow(),
 })
 
@@ -155,4 +197,6 @@ export const schema = {
 	toolErrorsRelations,
 	mcpRetrievalBenchmarks,
 	mcpRetrievalCalls,
+	mcpConnectionEvents,
+	mcpResourceEvents,
 }

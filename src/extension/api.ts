@@ -78,6 +78,38 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 						await vscode.commands.executeCommand("workbench.action.files.saveFiles")
 						await vscode.commands.executeCommand("workbench.action.closeWindow")
 						break
+					case TaskCommandName.SetTaskContext:
+						this.log(`[API] SetTaskContext -> ${JSON.stringify(data)}`)
+						try {
+							const evalContext = data
+
+							// Store in global state
+							await this.context.globalState.update("evalTaskContext", evalContext)
+
+							// Send confirmation back
+							ipc.sendToClient(_clientId, {
+								type: IpcMessageType.TaskContextConfirmation,
+								origin: IpcOrigin.Server,
+								data: {
+									taskId: evalContext.taskId,
+									rooTaskId: evalContext.rooTaskId,
+									success: true,
+								},
+							})
+						} catch (error) {
+							console.error("Failed to set task context:", error)
+							ipc.sendToClient(_clientId, {
+								type: IpcMessageType.TaskContextConfirmation,
+								origin: IpcOrigin.Server,
+								data: {
+									taskId: data.taskId,
+									rooTaskId: data.rooTaskId,
+									success: false,
+									error: error instanceof Error ? error.message : String(error),
+								},
+							})
+						}
+						break
 				}
 			})
 		}

@@ -19,6 +19,8 @@ import * as vscode from "vscode"
 import { z } from "zod"
 import { t } from "../../i18n"
 import { EventEmitter } from "events"
+import { traceable } from "langsmith/traceable"
+import { trace } from "@opentelemetry/api"
 
 import { ClineProvider } from "../../core/webview/ClineProvider"
 import { GlobalFileNames } from "../../shared/globalFileNames"
@@ -1335,81 +1337,151 @@ export class McpHub extends EventEmitter {
 		}
 	}
 
-	async callTool(
-		serverName: string,
-		toolName: string,
-		toolArguments?: Record<string, unknown>,
-		source?: "global" | "project",
-	): Promise<McpToolCallResponse> {
-		const startTime = Date.now()
+	callTool = traceable(
+		async (
+			serverName: string,
+			toolName: string,
+			toolArguments?: Record<string, unknown>,
+			source?: "global" | "project",
+			taskId?: string,
+		): Promise<McpToolCallResponse> => {
+			const span = trace.getActiveSpan()
 
-		const connection = this.findConnection(serverName, source)
-		if (!connection) {
-			throw new Error(
-				`No connection found for server: ${serverName}${source ? ` with source ${source}` : ""}. Please make sure to use MCP servers available under 'Connected MCP Servers'.`,
-			)
-		}
-		if (connection.server.disabled) {
-			throw new Error(`Server "${serverName}" is disabled and cannot be used`)
-		}
+			// Check for eval context first
+			const evalContext = await this.getEvalContext()
 
-		let timeout: number
-		try {
-			const parsedConfig = ServerConfigSchema.parse(JSON.parse(connection.server.config))
-			timeout = (parsedConfig.timeout ?? 60) * 1000
-		} catch (error) {
-			console.error("Failed to parse server config for timeout:", error)
-			// Default to 60 seconds if parsing fails
-			timeout = 60 * 1000
-		}
+			if (span) {
+				span.setAttributes({
+					"mcp.server": serverName,
+					"mcp.tool": toolName,
+					// Use eval context if available, otherwise fall back to regular taskId
+					...(evalContext
+						? {
+								"mcp.task_id": evalContext.rooTaskId, // Use string task ID for span attribute
+								"eval.task_id": evalContext.taskId, // Include database task ID for reference
+								"eval.run_id": evalContext.runId,
+								"eval.mcp_server": evalContext.mcpServer,
+							}
+						: taskId
+							? {
+									"mcp.task_id": taskId,
+								}
+							: {}),
+				})
+			}
+			const startTime = Date.now()
 
-		// Emit start event
-		this.emit("mcp:tool:start", {
-			serverName,
-			toolName,
-			toolArguments,
-			source,
-			timeout,
-			timestamp: startTime,
-		})
+			const connection = this.findConnection(serverName, source)
+			if (!connection) {
+				throw new Error(
+					`No connection found for server: ${serverName}${source ? ` with source ${source}` : ""}. Please make sure to use MCP servers available under 'Connected MCP Servers'.`,
+				)
+			}
+			if (connection.server.disabled) {
+				throw new Error(`Server "${serverName}" is disabled and cannot be used`)
+			}
 
-		try {
-			const result = await connection.client.request(
-				{
-					method: "tools/call",
-					params: {
-						name: toolName,
-						arguments: toolArguments,
+			let timeout: number
+			try {
+				const parsedConfig = ServerConfigSchema.parse(JSON.parse(connection.server.config))
+				timeout = (parsedConfig.timeout ?? 60) * 1000
+			} catch (error) {
+				console.error("Failed to parse server config for timeout:", error)
+				// Default to 60 seconds if parsing fails
+				timeout = 60 * 1000
+			}
+
+			// Emit start event
+			this.emit("mcp:tool:start", {
+				serverName,
+				toolName,
+				toolArguments,
+				source,
+				timeout,
+				timestamp: startTime,
+			})
+
+			try {
+				const result = await connection.client.request(
+					{
+						method: "tools/call",
+						params: {
+							name: toolName,
+							arguments: toolArguments,
+						},
 					},
-				},
-				CallToolResultSchema,
-				{
-					timeout,
-				},
-			)
+					CallToolResultSchema,
+					{
+						timeout,
+					},
+				)
 
-			// Emit success event
-			this.emit("mcp:tool:success", {
-				serverName,
-				toolName,
-				duration: Date.now() - startTime,
-				responseSize: JSON.stringify(result).length,
-				timestamp: startTime,
-			})
+				const duration = Date.now() - startTime
+				const responseSize = JSON.stringify(result).length
 
-			return result
-		} catch (error) {
-			// Emit error event
-			this.emit("mcp:tool:error", {
-				serverName,
-				toolName,
-				error: error instanceof Error ? error.message : String(error),
-				duration: Date.now() - startTime,
-				timestamp: startTime,
-			})
+				// LOG MCP TOOL CALL DATA FOR BENCHMARKING
+				console.log(
+					"🎯 MCP_BENCHMARK:",
+					JSON.stringify({
+						serverName,
+						toolName,
+						duration,
+						responseSize,
+						timestamp: startTime,
+						arguments: toolArguments,
+						result: result,
+					}),
+				)
 
-			throw error
+				// Emit success event
+				this.emit("mcp:tool:success", {
+					serverName,
+					toolName,
+					duration,
+					responseSize,
+					timestamp: startTime,
+				})
+
+				return result
+			} catch (error) {
+				// Emit error event
+				this.emit("mcp:tool:error", {
+					serverName,
+					toolName,
+					error: error instanceof Error ? error.message : String(error),
+					duration: Date.now() - startTime,
+					timestamp: startTime,
+				})
+
+				throw error
+			}
+		},
+		{
+			name: "MCP Tool Call",
+			metadata: {
+				type: "mcp_tool_call",
+			},
+		},
+	)
+
+	private async getEvalContext(): Promise<any | undefined> {
+		const provider = this.providerRef.deref()
+		if (!provider) return undefined
+
+		let context = await provider.context.globalState.get<any>("evalTaskContext")
+
+		// If no context but we're in eval mode, wait briefly and retry once
+		if (!context && process.env.ROO_EVAL_MODE === "true") {
+			console.warn("Eval context not yet available, waiting...")
+			await delay(100)
+			context = await provider.context.globalState.get<any>("evalTaskContext")
+
+			if (!context) {
+				console.error("Eval context still missing after retry")
+			}
 		}
+
+		return context
 	}
 
 	async toggleToolAlwaysAllow(
