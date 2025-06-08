@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm"
 export class McpBenchmarkProcessor implements SpanProcessor {
 	private activeTaskBenchmarks = new Map<number, number>() // taskId -> benchmarkId
 	private stepCounts = new Map<number, number>() // taskId -> currentStep
+	private taskIdMapping = new Map<string, number>() // rooTaskId (string) -> dbTaskId (number)
 
 	constructor(private db: Database) {}
 
@@ -16,20 +17,27 @@ export class McpBenchmarkProcessor implements SpanProcessor {
 		const serverName = span.attributes["rpc.service"] as string
 		// Ensure we only capture spans from specified MCP servers (e.g., exa, firecrawl, context7)
 		// This list can be made configurable if needed
-		if (
-			![
-				"exa",
-				"firecrawl",
-				"context7",
-				"perplexity-ask",
-				
-			].includes(serverName)
-		)
-			return
+		if (!["exa", "firecrawl", "context7", "perplexity-ask"].includes(serverName)) return
 
-		const taskId = span.attributes["mcp.task_id"] as number | undefined
-		if (taskId === undefined) {
+		// Handle both string and number task IDs
+		const taskIdAttr = span.attributes["mcp.task_id"]
+		if (taskIdAttr === undefined) {
 			// console.warn('McpBenchmarkProcessor: mcp.task_id attribute missing on span', span.name);
+			return
+		}
+
+		// Convert string taskId to number if we have a mapping
+		let taskId: number | undefined
+		if (typeof taskIdAttr === "string") {
+			taskId = this.taskIdMapping.get(taskIdAttr)
+			if (taskId === undefined) {
+				// console.warn(`McpBenchmarkProcessor: No mapping found for string taskId: ${taskIdAttr}`);
+				return
+			}
+		} else if (typeof taskIdAttr === "number") {
+			taskId = taskIdAttr
+		} else {
+			// console.warn(`McpBenchmarkProcessor: Invalid taskId type: ${typeof taskIdAttr}`);
 			return
 		}
 
@@ -60,6 +68,10 @@ export class McpBenchmarkProcessor implements SpanProcessor {
 		} catch (error) {
 			console.error("McpBenchmarkProcessor: Failed to insert mcpRetrievalCall", error)
 		}
+	}
+
+	registerTaskIdMapping(rooTaskId: string, dbTaskId: number): void {
+		this.taskIdMapping.set(rooTaskId, dbTaskId)
 	}
 
 	async startTaskBenchmark(taskId: number, runId: number, mcpServerName: string, userIntent: string): Promise<void> {

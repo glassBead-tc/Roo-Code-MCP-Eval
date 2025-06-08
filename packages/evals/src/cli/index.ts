@@ -6,8 +6,15 @@ import { execa, parseCommandString } from "execa"
 import { command, run, number, option, string } from "cmd-ts"
 import psTree from "ps-tree"
 
-import { RooCodeEventName, IpcOrigin, IpcMessageType, TaskCommandName } from "@roo-code/types"
+import {
+	RooCodeEventName,
+	IpcOrigin,
+	IpcMessageType,
+	TaskCommandName,
+	TaskContextConfirmationMessage,
+} from "@roo-code/types"
 import { IpcServer, IpcClient } from "@roo-code/ipc"
+import { v4 as uuidv4 } from "uuid"
 
 import {
 	type Run,
@@ -25,6 +32,7 @@ import {
 import { type ExerciseLanguage, exerciseLanguages, exercisesPath, getExercisesForLanguage } from "../exercises/index.js"
 import { McpBenchmarkProcessor } from "../benchmark/McpBenchmarkProcessor.js"
 import { client as dbClient } from "../db/db.js"
+import { initializeOpenTelemetry } from "../telemetry/initializeOtel.js"
 
 type TaskResult = { success: boolean }
 type TaskPromise = Promise<TaskResult>
@@ -32,6 +40,51 @@ type TaskPromise = Promise<TaskResult>
 const TASK_START_DELAY = 10 * 1_000
 const TASK_TIMEOUT = 5 * 60 * 1_000
 const UNIT_TEST_TIMEOUT = 2 * 60 * 1_000
+
+async function setTaskContextWithConfirmation(
+	task: Task,
+	rooTaskId: string,
+	client: IpcClient,
+	otel: ReturnType<typeof initializeOpenTelemetry>,
+): Promise<boolean> {
+	return new Promise((resolve) => {
+		const timeout = setTimeout(() => {
+			console.error(`Timeout waiting for task context confirmation for task ${task.id}`)
+			resolve(false)
+		}, 5000)
+
+		// Set up one-time listener for confirmation
+		const confirmationHandler = (message: TaskContextConfirmationMessage) => {
+			if (message.taskId === task.id && message.rooTaskId === rooTaskId) {
+				clearTimeout(timeout)
+				client.off(IpcMessageType.TaskContextConfirmation, confirmationHandler)
+				resolve(message.success)
+			}
+		}
+
+		client.on(IpcMessageType.TaskContextConfirmation, confirmationHandler)
+
+		// Register the task ID mapping in McpBenchmarkProcessor
+		otel.mcpProcessor.registerTaskIdMapping(rooTaskId, task.id)
+
+		// Send SetTaskContext command
+		client.sendMessage({
+			type: IpcMessageType.TaskCommand,
+			origin: IpcOrigin.Client,
+			clientId: client.clientId!,
+			data: {
+				commandName: TaskCommandName.SetTaskContext,
+				data: {
+					taskId: task.id, // Database integer ID
+					rooTaskId: rooTaskId, // Roo's string ID
+					runId: task.runId,
+					mcpServer: "default", // TODO: get from task config
+					userIntent: "exercise", // TODO: get from task config
+				},
+			},
+		})
+	})
+}
 
 const testCommands: Record<ExerciseLanguage, { commands: string[]; timeout?: number; cwd?: string }> = {
 	go: { commands: ["go test"] }, // timeout 15s bash -c "cd '$dir' && go test > /dev/null 2>&1"
@@ -42,7 +95,13 @@ const testCommands: Record<ExerciseLanguage, { commands: string[]; timeout?: num
 }
 
 const runEvals = async (id: number) => {
-	const mcpBenchmarkProcessor = new McpBenchmarkProcessor(dbClient)
+	// Initialize OpenTelemetry with extensible configuration
+	const otel = await initializeOpenTelemetry({
+		debug: process.env.OTEL_LOG_LEVEL === "debug",
+		env: (process.env.NODE_ENV as "development" | "production" | "test") || "development",
+	})
+	const mcpBenchmarkProcessor = otel.mcpProcessor
+
 	const run = await findRun(id)
 	const tasks = await getTasks(run.id)
 
@@ -65,7 +124,7 @@ const runEvals = async (id: number) => {
 		await mcpBenchmarkProcessor.startTaskBenchmark(task.id, runId, "default_mcp_server", "default_user_intent") // Placeholders for server and intent
 		if (task.finishedAt === null) {
 			await new Promise((resolve) => setTimeout(resolve, delay))
-			await runExercise({ run, task, server })
+			await runExercise({ run, task, server, otel })
 		}
 
 		if (task.passed === null) {
@@ -114,9 +173,22 @@ const runEvals = async (id: number) => {
 
 	await execa({ cwd: exercisesPath })`git add .`
 	await execa({ cwd: exercisesPath })`git commit -m ${`Run #${run.id}`} --no-verify`
+
+	// Shutdown OpenTelemetry
+	await otel.shutdown()
 }
 
-const runExercise = async ({ run, task, server }: { run: Run; task: Task; server: IpcServer }): TaskPromise => {
+const runExercise = async ({
+	run,
+	task,
+	server,
+	otel,
+}: {
+	run: Run
+	task: Task
+	server: IpcServer
+	otel: ReturnType<typeof initializeOpenTelemetry>
+}): TaskPromise => {
 	const { language, exercise } = task
 	const prompt = fs.readFileSync(path.resolve(exercisesPath, `prompts/${language}.md`), "utf-8")
 	const dirname = path.dirname(run.socketPath)
@@ -273,6 +345,17 @@ const runExercise = async ({ run, task, server }: { run: Run; task: Task; server
 	console.log(`${Date.now()} [cli#runExercise | ${language} / ${exercise}] starting task`)
 
 	if (client.isReady) {
+		// Generate Roo's internal task ID
+		const generatedRooTaskId = uuidv4()
+
+		// Set task context and wait for confirmation
+		const contextSet = await setTaskContextWithConfirmation(task, generatedRooTaskId, client, otel)
+		if (!contextSet) {
+			console.error(`Failed to set task context for task ${task.id}`)
+			client.disconnect()
+			return { success: false }
+		}
+
 		client.sendMessage({
 			type: IpcMessageType.TaskCommand,
 			origin: IpcOrigin.Client,
