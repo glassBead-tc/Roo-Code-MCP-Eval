@@ -15,9 +15,9 @@ export class McpBenchmarkProcessor implements SpanProcessor {
 		// Only process client spans for MCP services we care about
 		if (span.kind !== SpanKind.CLIENT || span.attributes["rpc.system"] !== "mcp") return
 		const serverName = span.attributes["rpc.service"] as string
-		// Ensure we only capture spans from specified MCP servers (e.g., exa, firecrawl, context7)
+		// Ensure we only capture spans from specified MCP servers (e.g., exa, firecrawl)
 		// This list can be made configurable if needed
-		if (!["exa", "firecrawl", "context7", "perplexity-ask"].includes(serverName)) return
+		if (!["exa", "firecrawl"].includes(serverName)) return
 
 		// Handle both string and number task IDs
 		const taskIdAttr = span.attributes["mcp.task_id"]

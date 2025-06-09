@@ -51,7 +51,7 @@ export class OtlpProvider implements TelemetryProvider {
 	readonly name = "OpenTelemetry Protocol (OTLP)"
 	readonly description = "Exports traces using OTLP over HTTP"
 
-	async initialize(config: TelemetryProviderConfig, resource: Resource): Promise<TelemetryProviderInitResult> {
+	async initialize(config: TelemetryProviderConfig, _resource: Resource): Promise<TelemetryProviderInitResult> {
 		const options = (config.options as OtlpProviderOptions) || {}
 
 		// Create OTLP exporter

@@ -24,6 +24,7 @@
 		"test:telemetry:simple": "node --loader tsx src/telemetry/test-without-db.ts"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.9.0",
 		"@opentelemetry/api": "^1.9.0",
 		"@opentelemetry/exporter-trace-otlp-http": "^0.52.0",
 		"@opentelemetry/resources": "^1.25.0",

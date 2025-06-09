@@ -1,0 +1,61 @@
+# Test files
+__tests__/
+__mocks__/
+*.test.ts
+*.spec.ts
+*.test.js
+*.spec.js
+jest.config.*
+vitest.config.*
+
+# Source files (if publishing built files)
+src/
+*.ts
+!dist/**/*.d.ts
+
+# Config files
+tsconfig.json
+tsconfig.*.json
+.eslintrc*
+.prettierrc*
+
+# Development files
+*.map
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+!.env.*.sample
+
+# MCP Configuration
+*mcp_config.json
+*mcp-config.json
+mcp_config*.json
+mcp-config*.json
+claude_code_mcp_config.json
+cc_mcp_config.json
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Build tools
+.turbo/
+.cache/

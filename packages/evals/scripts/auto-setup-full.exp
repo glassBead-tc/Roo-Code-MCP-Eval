@@ -1,0 +1,21 @@
+#!/usr/bin/expect -f
+
+# Automate the interactive setup.sh script
+set timeout 300
+
+spawn ./scripts/setup.sh
+
+# Keep all language selections (press Enter to continue with all selected)
+expect "Type 1-5 to select, 'q' to quit, ⏎ to continue:"
+send "\r"
+
+# Don't build extension
+expect -re "Do you want to build a new version.*\\(y/N\\):"
+send "N\r"
+
+# Don't start web app
+expect -re "Would you like to start the evals web app.*\\(Y/n\\):"
+send "n\r"
+
+# Wait for completion
+expect eof

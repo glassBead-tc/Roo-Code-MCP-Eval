@@ -86,8 +86,15 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							// Store in global state
 							await this.context.globalState.update("evalTaskContext", evalContext)
 
+							// Enable MCP telemetry for eval mode
+							if (process.env.ROO_EVAL_MODE === "true") {
+								await vscode.workspace
+									.getConfiguration(Package.name)
+									.update("telemetry.mcp.enabled", true, vscode.ConfigurationTarget.Global)
+							}
+
 							// Send confirmation back
-							ipc.sendToClient(_clientId, {
+							ipc.send(_clientId, {
 								type: IpcMessageType.TaskContextConfirmation,
 								origin: IpcOrigin.Server,
 								data: {
@@ -98,7 +105,7 @@ export class API extends EventEmitter<RooCodeEvents> implements RooCodeAPI {
 							})
 						} catch (error) {
 							console.error("Failed to set task context:", error)
-							ipc.sendToClient(_clientId, {
+							ipc.send(_clientId, {
 								type: IpcMessageType.TaskContextConfirmation,
 								origin: IpcOrigin.Server,
 								data: {

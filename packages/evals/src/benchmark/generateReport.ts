@@ -1,6 +1,7 @@
-import { eq, inArray, and } from "drizzle-orm"
+import { inArray } from "drizzle-orm"
 import { type DatabaseOrTransaction as Database } from "../db/db.js"
-import { mcpRetrievalBenchmarks, mcpRetrievalCalls, tasks, runs } from "../db/schema.js"
+import { mcpRetrievalBenchmarks, tasks } from "../db/schema.js"
+import * as fs from "fs"
 
 export interface ServerStats {
 	total: number
@@ -22,10 +23,7 @@ export interface BenchmarkReport {
 /**
  * Generate a comparison report for MCP retrieval benchmarks across multiple runs
  */
-export async function generateServerComparisonReport(
-	db: Database,
-	runIds: number[]
-): Promise<BenchmarkReport> {
+export async function generateServerComparisonReport(db: Database, runIds: number[]): Promise<BenchmarkReport> {
 	// Fetch all benchmarks for the specified runs
 	const benchmarks = await db
 		.select()
@@ -33,15 +31,12 @@ export async function generateServerComparisonReport(
 		.where(inArray(mcpRetrievalBenchmarks.runId, runIds))
 
 	// Fetch related tasks to get exercise information
-	const taskIds = [...new Set(benchmarks.map(b => b.taskId))]
-	const tasksData = await db
-		.select()
-		.from(tasks)
-		.where(inArray(tasks.id, taskIds))
+	const taskIds = [...new Set(benchmarks.map((b) => b.taskId))]
+	const tasksData = await db.select().from(tasks).where(inArray(tasks.id, taskIds))
 
 	// Create a map of taskId to exercise name
 	const taskExerciseMap = new Map<number, string>()
-	tasksData.forEach(task => {
+	tasksData.forEach((task) => {
 		taskExerciseMap.set(task.id, `${task.language}/${task.exercise}`)
 	})
 
@@ -136,11 +131,11 @@ export function printBenchmarkReport(report: BenchmarkReport): void {
 	console.log("\n--- Overall Server Comparison ---")
 	console.log("Server Name | Success Rate | Avg Steps | Avg Errors")
 	console.log("------------|-------------|-----------|------------")
-	
+
 	for (const [serverName, stats] of Object.entries(report.serverComparison)) {
 		console.log(
 			`${serverName.padEnd(11)} | ${(stats.successRate * 100).toFixed(1)}%`.padEnd(12) +
-			` | ${stats.avgSteps.toFixed(1).padEnd(9)} | ${stats.avgErrors.toFixed(1)}`
+				` | ${stats.avgSteps.toFixed(1).padEnd(9)} | ${stats.avgErrors.toFixed(1)}`,
 		)
 	}
 
@@ -150,7 +145,7 @@ export function printBenchmarkReport(report: BenchmarkReport): void {
 		for (const [serverName, stats] of Object.entries(servers)) {
 			console.log(
 				`  ${serverName}: ${(stats.successRate * 100).toFixed(1)}% success, ` +
-				`${stats.avgSteps.toFixed(1)} steps, ${stats.avgErrors.toFixed(1)} errors`
+					`${stats.avgSteps.toFixed(1)} steps, ${stats.avgErrors.toFixed(1)} errors`,
 			)
 		}
 	}
@@ -160,7 +155,6 @@ export function printBenchmarkReport(report: BenchmarkReport): void {
  * Export report as JSON
  */
 export function exportReportAsJson(report: BenchmarkReport, filename: string): void {
-	const fs = require("fs")
 	fs.writeFileSync(filename, JSON.stringify(report, null, 2))
 	console.log(`Report exported to ${filename}`)
 }

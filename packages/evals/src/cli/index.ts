@@ -3,7 +3,7 @@ import * as path from "path"
 
 import pWaitFor from "p-wait-for"
 import { execa, parseCommandString } from "execa"
-import { command, run, number, option, string } from "cmd-ts"
+import { command, run, number, option, string, optional } from "cmd-ts"
 import psTree from "ps-tree"
 
 import {
@@ -30,8 +30,6 @@ import {
 	createToolError,
 } from "../db/index.js"
 import { type ExerciseLanguage, exerciseLanguages, exercisesPath, getExercisesForLanguage } from "../exercises/index.js"
-import { McpBenchmarkProcessor } from "../benchmark/McpBenchmarkProcessor.js"
-import { client as dbClient } from "../db/db.js"
 import { initializeOpenTelemetry } from "../telemetry/initializeOtel.js"
 
 type TaskResult = { success: boolean }
@@ -45,7 +43,7 @@ async function setTaskContextWithConfirmation(
 	task: Task,
 	rooTaskId: string,
 	client: IpcClient,
-	otel: ReturnType<typeof initializeOpenTelemetry>,
+	otel: Awaited<ReturnType<typeof initializeOpenTelemetry>>,
 ): Promise<boolean> {
 	return new Promise((resolve) => {
 		const timeout = setTimeout(() => {
@@ -187,7 +185,7 @@ const runExercise = async ({
 	run: Run
 	task: Task
 	server: IpcServer
-	otel: ReturnType<typeof initializeOpenTelemetry>
+	otel: Awaited<ReturnType<typeof initializeOpenTelemetry>>
 }): TaskPromise => {
 	const { language, exercise } = task
 	const prompt = fs.readFileSync(path.resolve(exercisesPath, `prompts/${language}.md`), "utf-8")
@@ -209,30 +207,22 @@ const runExercise = async ({
 	// Don't await execa and store result as subprocess.
 	// subprocess.stdout.pipe(process.stdout)
 
-	console.log(`${Date.now()} [cli#runExercise] Opening new VS Code window at ${workspacePath}`)
+	console.log(`${Date.now()} [cli#runExercise] Starting headless VS Code at ${workspacePath}`)
 
 	const controller = new AbortController()
 	const cancelSignal = controller.signal
 
-	// If debugging:
-	// Use --wait --log trace or --verbose.
-	let codeCommand = `code --disable-workspace-trust`
-	const isDocker = fs.existsSync("/.dockerenv")
-
-	if (isDocker) {
-		if (run.concurrency > 1) {
-			throw new Error("Cannot run multiple tasks in parallel in Docker. Please set concurrency to 1.")
-		}
-		codeCommand = `xvfb-run --auto-servernum --server-num=1 ${codeCommand} --wait --log trace --disable-gpu --password-store="basic"`
-	}
+	// Run VS Code in headless mode for extension-only functionality
+	const codeCommand = `code --headless --disable-workspace-trust --folder=${workspacePath}`
 
 	const subprocess = execa({
 		env: {
+			...process.env,
 			ROO_CODE_IPC_SOCKET_PATH: taskSocketPath,
 		},
 		shell: "/bin/bash",
 		cancelSignal,
-	})`${codeCommand} -n ${workspacePath}`
+	})`${codeCommand}`
 
 	// If debugging:
 	// subprocess.stdout.pipe(process.stdout)
@@ -243,7 +233,7 @@ const runExercise = async ({
 	const client = new IpcClient(taskSocketPath)
 
 	try {
-		await pWaitFor(() => client.isReady, { interval: 250, timeout: 5_000 })
+		await pWaitFor(() => client.isReady, { interval: 250, timeout: 30_000 })
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	} catch (error) {
 		console.log(`${Date.now()} [cli#runExercise | ${language} / ${exercise}] unable to connect`)
@@ -511,6 +501,7 @@ const createAndRunEvals = async (args: {
 	model?: string
 	include?: string
 	exclude?: string
+	exercise?: string
 	concurrent?: number
 	description?: string
 }) => {
@@ -555,16 +546,40 @@ const createAndRunEvals = async (args: {
 	console.log(`Testing languages: ${languages.join(", ")}`)
 
 	// Create tasks for each language/exercise combination
-	for (const language of languages) {
-		const exercises = await getExercisesForLanguage(language)
-		for (const exercise of exercises) {
-			await createTask({
-				runId: run.id,
-				language,
-				exercise,
-			})
+	if (args.exercise) {
+		// Single exercise mode
+		const exerciseName = args.exercise
+		let taskCreated = false
+
+		for (const language of languages) {
+			const exercises = await getExercisesForLanguage(language)
+			if (exercises.includes(exerciseName)) {
+				await createTask({
+					runId: run.id,
+					language,
+					exercise: exerciseName,
+				})
+				console.log(`Created 1 task for ${language}/${exerciseName}`)
+				taskCreated = true
+			}
 		}
-		console.log(`Created ${exercises.length} tasks for ${language}`)
+
+		if (!taskCreated) {
+			throw new Error(`Exercise "${exerciseName}" not found in languages: ${languages.join(", ")}`)
+		}
+	} else {
+		// Multi exercise mode (original behavior)
+		for (const language of languages) {
+			const exercises = await getExercisesForLanguage(language)
+			for (const exercise of exercises) {
+				await createTask({
+					runId: run.id,
+					language,
+					exercise,
+				})
+			}
+			console.log(`Created ${exercises.length} tasks for ${language}`)
+		}
 	}
 
 	// Run the evaluation
@@ -579,37 +594,43 @@ const main = async () => {
 			version: "0.0.0",
 			args: {
 				runId: option({
-					type: number,
+					type: optional(number),
 					long: "run-id",
 					short: "r",
 					description: "Existing run ID to execute",
 				}),
 				model: option({
-					type: string,
+					type: optional(string),
 					long: "model",
 					short: "m",
 					description: "Model to use (default: claude-3-5-haiku-20241022)",
 				}),
 				include: option({
-					type: string,
+					type: optional(string),
 					long: "include",
 					short: "i",
 					description: "Comma-separated list of languages to include",
 				}),
 				exclude: option({
-					type: string,
+					type: optional(string),
 					long: "exclude",
 					short: "e",
 					description: "Comma-separated list of languages to exclude",
 				}),
+				exercise: option({
+					type: optional(string),
+					long: "exercise",
+					short: "x",
+					description: "Run only this specific exercise name (e.g., 'two-fer')",
+				}),
 				concurrent: option({
-					type: number,
+					type: optional(number),
 					long: "concurrent",
 					short: "c",
 					description: "Number of concurrent tasks (default: 2)",
 				}),
 				description: option({
-					type: string,
+					type: optional(string),
 					long: "description",
 					short: "d",
 					description: "Description for the run",
