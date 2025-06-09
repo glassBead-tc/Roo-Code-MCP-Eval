@@ -87,7 +87,7 @@ async function setTaskContextWithConfirmation(
 const testCommands: Record<ExerciseLanguage, { commands: string[]; timeout?: number; cwd?: string }> = {
 	go: { commands: ["go test"] }, // timeout 15s bash -c "cd '$dir' && go test > /dev/null 2>&1"
 	java: { commands: ["./gradlew test"] }, // timeout --foreground 15s bash -c "cd '$dir' && ./gradlew test > /dev/null 2>&1"
-	javascript: { commands: ["pnpm install", "pnpm test"] }, // timeout 15s bash -c "cd '$dir' && pnpm install >/dev/null 2>&1 && pnpm test >/dev/null 2>&1"
+	javascript: { commands: ["pnpm install --ignore-workspace", "pnpm test"] }, // timeout 15s bash -c "cd '$dir' && pnpm install >/dev/null 2>&1 && pnpm test >/dev/null 2>&1"
 	python: { commands: ["uv run python3 -m pytest -o markers=task *_test.py"] }, // timeout 15s bash -c "cd '$dir' && uv run python3 -m pytest -o markers=task *_test.py"
 	rust: { commands: ["cargo test"] }, // timeout 15s bash -c "cd '$dir' && cargo test > /dev/null 2>&1"
 }
@@ -213,7 +213,9 @@ const runExercise = async ({
 	const cancelSignal = controller.signal
 
 	// Run VS Code in headless mode for extension-only functionality
-	const codeCommand = `code --headless --disable-workspace-trust --folder=${workspacePath}`
+	// Use code command directly to work in Docker containers
+	const vscodeCommand = process.env.VSCODE_PATH || "code"
+	const codeCommand = `${vscodeCommand} --headless --disable-workspace-trust --folder="${workspacePath}"`
 
 	const subprocess = execa({
 		env: {
