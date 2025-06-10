@@ -87,8 +87,24 @@ export const finishRun = async (runId: number) => {
 	}, {} as ToolUsage)
 
 	const { passed, failed, ...rest } = values
-	const taskMetrics = await createTaskMetrics({ ...rest, toolUsage })
-	await updateRun(runId, { taskMetricsId: taskMetrics.id, passed, failed })
+
+	// Provide default values for null sums (when no task metrics exist)
+	const safeMetrics = {
+		tokensIn: rest.tokensIn ?? 0,
+		tokensOut: rest.tokensOut ?? 0,
+		tokensContext: rest.tokensContext ?? 0,
+		cacheWrites: rest.cacheWrites ?? 0,
+		cacheReads: rest.cacheReads ?? 0,
+		cost: rest.cost ?? 0,
+		duration: rest.duration ?? 0,
+	}
+
+	const taskMetrics = await createTaskMetrics({ ...safeMetrics, toolUsage })
+	await updateRun(runId, {
+		taskMetricsId: taskMetrics.id,
+		passed: passed ?? 0,
+		failed: failed ?? 0,
+	})
 
 	const run = await findRun(runId)
 

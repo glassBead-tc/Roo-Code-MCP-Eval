@@ -1,0 +1,53 @@
+{
+	"providers": [
+		{
+			"id": "otlp",
+			"name": "OpenTelemetry Protocol",
+			"description": "Primary OTLP exporter for production traces",
+			"enabled": true,
+			"options": {
+				"endpoint": "http://localhost:4318/v1/traces",
+				"headers": {
+					"X-API-Key": "${OTEL_API_KEY}"
+				},
+				"timeout": 10000,
+				"concurrencyLimit": 10,
+				"batch": {
+					"maxQueueSize": 2048,
+					"maxExportBatchSize": 512,
+					"scheduledDelayMillis": 5000,
+					"exportTimeoutMillis": 30000
+				}
+			}
+		},
+		{
+			"id": "jaeger",
+			"name": "Jaeger",
+			"description": "Local Jaeger instance for development (uses OTLP HTTP)",
+			"enabled": false,
+			"options": {
+				"endpoint": "http://localhost:4318/v1/traces",
+				"headers": {},
+				"timeout": 10000,
+				"forceFlush": true,
+				"batch": {
+					"maxQueueSize": 1000,
+					"maxExportBatchSize": 100,
+					"scheduledDelayMillis": 1000,
+					"exportTimeoutMillis": 30000
+				}
+			}
+		},
+		{
+			"id": "console",
+			"name": "Console Debug",
+			"description": "Console output for debugging",
+			"enabled": false,
+			"options": {
+				"useBatch": false,
+				"prettyPrint": true
+			}
+		}
+	],
+	"debug": false
+}

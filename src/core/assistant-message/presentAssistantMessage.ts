@@ -31,6 +31,8 @@ import { formatResponse } from "../prompts/responses"
 import { validateToolUse } from "../tools/validateToolUse"
 import { Task } from "../task/Task"
 import { codebaseSearchTool } from "../tools/codebaseSearchTool"
+// Stream B: State Inspection instrumentation
+import { stateInspector, debugUtils } from "../state-inspector"
 
 /**
  * Processes and presents assistant message content to the user interface.
@@ -60,14 +62,41 @@ export async function presentAssistantMessage(cline: Task) {
 	}
 
 	cline.presentAssistantMessageLocked = true
+
+	// Stream B: Presentation state
+	const debugMessage = `[PRESENT-MESSAGE-DEBUG] Starting presentation: index=${cline.currentStreamingContentIndex}/${cline.assistantMessageContent.length}`
+	console.log(debugMessage)
+	cline.providerRef?.deref()?.log(debugMessage)
+	stateInspector.captureStateSnapshot(cline, "presentation_start")
+
 	cline.presentAssistantMessageHasPendingUpdates = false
+
+	console.debug("[COMPLETION-DEBUG] presentAssistantMessage called", {
+		taskId: cline.taskId,
+		instanceId: cline.instanceId,
+		currentIndex: cline.currentStreamingContentIndex,
+		totalBlocks: cline.assistantMessageContent.length,
+		didCompleteReadingStream: cline.didCompleteReadingStream,
+		userMessageContentReady: cline.userMessageContentReady,
+	})
 
 	if (cline.currentStreamingContentIndex >= cline.assistantMessageContent.length) {
 		// This may happen if the last content block was completed before
 		// streaming could finish. If streaming is finished, and we're out of
 		// bounds then this means we already  presented/executed the last
 		// content block and are ready to continue to next request.
+
+		// Stream B: Critical decision point - out of bounds
+		const outOfBoundsMessage = `[PRESENT-MESSAGE-DEBUG] Out of bounds: didCompleteReading=${cline.didCompleteReadingStream}`
+		console.log(outOfBoundsMessage)
+		cline.providerRef?.deref()?.log(outOfBoundsMessage)
+
 		if (cline.didCompleteReadingStream) {
+			console.debug("[COMPLETION-DEBUG] Setting userMessageContentReady=true (out of bounds, stream complete)", {
+				taskId: cline.taskId,
+				currentIndex: cline.currentStreamingContentIndex,
+				totalBlocks: cline.assistantMessageContent.length,
+			})
 			cline.userMessageContentReady = true
 		}
 
@@ -455,6 +484,12 @@ export async function presentAssistantMessage(cline: Task) {
 					await newTaskTool(cline, block, askApproval, handleError, pushToolResult, removeClosingTag)
 					break
 				case "attempt_completion":
+					console.debug("[COMPLETION-DEBUG] Executing attempt_completion tool", {
+						taskId: cline.taskId,
+						instanceId: cline.instanceId,
+						toolParams: block.params,
+						isPartial: block.partial,
+					})
 					await attemptCompletionTool(
 						cline,
 						block,
@@ -465,6 +500,10 @@ export async function presentAssistantMessage(cline: Task) {
 						toolDescription,
 						askFinishSubTaskApproval,
 					)
+					console.debug("[COMPLETION-DEBUG] attempt_completion tool execution completed", {
+						taskId: cline.taskId,
+						instanceId: cline.instanceId,
+					})
 					break
 			}
 
@@ -505,6 +544,11 @@ export async function presentAssistantMessage(cline: Task) {
 			// true when out of bounds. This gracefully allows the stream to
 			// continue on and all potential content blocks be presented.
 			// Last block is complete and it is finished executing
+			console.debug("[COMPLETION-DEBUG] Setting userMessageContentReady=true (last block complete)", {
+				taskId: cline.taskId,
+				currentIndex: cline.currentStreamingContentIndex,
+				totalBlocks: cline.assistantMessageContent.length,
+			})
 			cline.userMessageContentReady = true // Will allow `pWaitFor` to continue.
 		}
 

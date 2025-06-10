@@ -1,0 +1,83 @@
+# Test files
+__tests__/
+__mocks__/
+*.test.ts
+*.spec.ts
+*.test.js
+*.spec.js
+jest.config.*
+vitest.config.*
+
+# Source files (if publishing built files)
+src/
+*.ts
+!dist/**/*.d.ts
+
+# Config files
+tsconfig.json
+tsconfig.*.json
+.eslintrc*
+.prettierrc*
+docker-compose.yml
+drizzle.config.ts
+
+# Development files
+*.map
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+!.env.*.sample
+
+# MCP Configuration
+*mcp_config.json
+*mcp-config.json
+mcp_config*.json
+mcp-config*.json
+claude_code_mcp_config.json
+cc_mcp_config.json
+
+# Telemetry configuration
+telemetry.config.json
+telemetry.config.*.json
+!telemetry.config.example.json
+
+# Database
+*.db
+*.sqlite
+migrations/
+
+# Scripts
+scripts/
+run-setup.sh
+*.exp
+
+# Specs and docs
+specs/
+docs/
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build tools
+.turbo/
+.cache/
+build-utils/
+
+# Examples
+examples/

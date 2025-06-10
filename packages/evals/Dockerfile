@@ -45,33 +45,31 @@ RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
 
  WORKDIR /home/vscode/repo/benchmark
 
- # Install dependencies
- COPY --chown=vscode:vscode ./evals/package.json ./evals/pnpm-lock.yaml ./evals/pnpm-workspace.yaml ./evals/.npmrc ./
- RUN mkdir -p apps/cli apps/web \
-   config/eslint config/typescript \
-   packages/db packages/ipc packages/lib packages/types
- COPY --chown=vscode:vscode ./evals/apps/cli/package.json          ./apps/cli/
- COPY --chown=vscode:vscode ./evals/apps/web/package.json          ./apps/web/
- COPY --chown=vscode:vscode ./evals/config/eslint/package.json     ./config/eslint/
- COPY --chown=vscode:vscode ./evals/config/typescript/package.json ./config/typescript/
- COPY --chown=vscode:vscode ./evals/packages/db/package.json       ./packages/db/
- COPY --chown=vscode:vscode ./evals/packages/ipc/package.json      ./packages/ipc/
- COPY --chown=vscode:vscode ./evals/packages/lib/package.json      ./packages/lib/
- COPY --chown=vscode:vscode ./evals/packages/types/package.json    ./packages/types/
+ # Copy monorepo structure for proper dependency resolution
+ COPY --chown=vscode:vscode ./Roo-Code/pnpm-lock.yaml ./Roo-Code/pnpm-workspace.yaml ./
+ 
+ # Copy all workspace packages with their source code
+ COPY --chown=vscode:vscode ./Roo-Code/packages/evals             ./packages/evals/
+ COPY --chown=vscode:vscode ./Roo-Code/packages/config-eslint     ./packages/config-eslint/
+ COPY --chown=vscode:vscode ./Roo-Code/packages/config-typescript ./packages/config-typescript/
+ COPY --chown=vscode:vscode ./Roo-Code/packages/ipc               ./packages/ipc/
+ COPY --chown=vscode:vscode ./Roo-Code/packages/types             ./packages/types/
+ 
+ # Install dependencies with complete workspace structure
  RUN pnpm install
 
  # Copy & install extension
- COPY --chown=vscode:vscode ./bin/roo-code-latest.vsix ./
+ COPY --chown=vscode:vscode ./Roo-Code/bin/roo-code-latest.vsix ./
  RUN code --debug --install-extension ./roo-code-latest.vsix
 
- # Copy application code
- COPY --chown=vscode:vscode ./evals ./
+ # Change to evals package directory
+ WORKDIR /home/vscode/repo/benchmark/packages/evals
 
- # Copy environment variables
- COPY --chown=vscode:vscode ./evals/.env ./
+ # Create symlink so exercises path resolves correctly
+ RUN ln -sf /home/vscode/evals /home/vscode/repo/evals
 
  # Push database schema
- RUN pnpm --filter @roo-code/evals db:push --force
+ RUN pnpm db:push --force
 
  EXPOSE 3000
- CMD ["pnpm", "web"]
+ CMD ["pnpm", "cli", "--exercise", "two-bucket", "--include", "javascript"]

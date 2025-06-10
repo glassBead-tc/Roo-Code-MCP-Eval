@@ -82,6 +82,8 @@ import { processUserContentMentions } from "../mentions/processUserContentMentio
 import { ApiMessage } from "../task-persistence/apiMessages"
 import { getMessagesSinceLastSummary, summarizeConversation } from "../condense"
 import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
+// Stream B: State Inspection instrumentation
+import { stateInspector, debugUtils } from "../state-inspector"
 
 export type ClineEvents = {
 	message: [{ action: "created" | "updated"; message: ClineMessage }]
@@ -1078,12 +1080,21 @@ export class Task extends EventEmitter<ClineEvents> {
 		// Kicks off the checkpoints initialization process in the background.
 		getCheckpointService(this)
 
+		// Stream B: Capture initial task loop state
+		const debugMessage = `[TASK-LOOP-DEBUG] Starting task loop for ${this.taskId}.${this.instanceId}`
+		console.log(debugMessage)
+		this.providerRef.deref()?.log(debugMessage)
+		debugUtils.onTaskLoopStart(this)
+
 		let nextUserContent = userContent
 		let includeFileDetails = true
 
 		this.emit("taskStarted")
 
 		while (!this.abort) {
+			// Stream B: Capture state at each loop iteration
+			stateInspector.captureStateSnapshot(this, "task_loop_iteration")
+
 			const didEndLoop = await this.recursivelyMakeClineRequests(nextUserContent, includeFileDetails)
 			includeFileDetails = false // we only need file details the first time
 
@@ -1098,11 +1109,33 @@ export class Task extends EventEmitter<ClineEvents> {
 			// requests, but Cline is prompted to finish the task as efficiently
 			// as he can.
 
+			console.debug("[COMPLETION-DEBUG] Task loop iteration completed", {
+				taskId: this.taskId,
+				instanceId: this.instanceId,
+				didEndLoop: didEndLoop,
+				consecutiveMistakeCount: this.consecutiveMistakeCount,
+				includeFileDetails: includeFileDetails,
+			})
+
 			if (didEndLoop) {
+				// Stream B: Log completion decision
+				const completionMessage = `[COMPLETION-DEBUG] Task loop ended: taskId=${this.taskId}, didEndLoop=${didEndLoop}`
+				console.log(completionMessage)
+				this.providerRef.deref()?.log(completionMessage)
+				debugUtils.onCompletionCheck(this, "task_loop_end")
+
 				// For now a task never 'completes'. This will only happen if
 				// the user hits max requests and denies resetting the count.
+				console.debug("[COMPLETION-DEBUG] Task loop ending", {
+					taskId: this.taskId,
+					reason: "didEndLoop=true",
+				})
 				break
 			} else {
+				console.debug("[COMPLETION-DEBUG] Task loop continuing - no tools used", {
+					taskId: this.taskId,
+					incrementedMistakeCount: this.consecutiveMistakeCount + 1,
+				})
 				nextUserContent = [{ type: "text", text: formatResponse.noToolsUsed() }]
 				this.consecutiveMistakeCount++
 			}
@@ -1488,13 +1521,40 @@ export class Task extends EventEmitter<ClineEvents> {
 				await pWaitFor(() => this.userMessageContentReady)
 
 				// If the model did not tool use, then we need to tell it to
+				// Stream B: Critical decision point - no tools used
+				console.log(
+					`[NO-TOOLS-DEBUG] Model didn't use tools: taskId=${this.taskId}, assistantMessageContent=${this.assistantMessageContent.length}`,
+				)
+				debugUtils.onCompletionCheck(this, "no_tools_used")
+
 				// either use a tool or attempt_completion.
 				const didToolUse = this.assistantMessageContent.some((block) => block.type === "tool_use")
 
+				console.debug("[COMPLETION-DEBUG] Tool use analysis", {
+					taskId: this.taskId,
+					instanceId: this.instanceId,
+					didToolUse: didToolUse,
+					messageContentBlocks: this.assistantMessageContent.length,
+					toolBlocks: this.assistantMessageContent
+						.filter((block) => block.type === "tool_use")
+						.map((block) => (block as any).name),
+					consecutiveMistakeCount: this.consecutiveMistakeCount,
+				})
+
 				if (!didToolUse) {
+					console.debug("[COMPLETION-DEBUG] No tools used - prompting for tool use or completion", {
+						taskId: this.taskId,
+						incrementedMistakeCount: this.consecutiveMistakeCount + 1,
+					})
 					this.userMessageContent.push({ type: "text", text: formatResponse.noToolsUsed() })
 					this.consecutiveMistakeCount++
 				}
+
+				// Stream B: Log recursive call decision
+				console.log(
+					`[RECURSIVE-DEBUG] About to recurse: didToolUse=${didToolUse}, userMessageContentLength=${this.userMessageContent.length}`,
+				)
+				stateInspector.captureStateSnapshot(this, "before_recursive_call")
 
 				const recDidEndLoop = await this.recursivelyMakeClineRequests(this.userMessageContent)
 				didEndLoop = recDidEndLoop

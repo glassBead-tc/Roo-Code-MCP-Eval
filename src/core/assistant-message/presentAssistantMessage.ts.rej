@@ -1,0 +1,89 @@
+@@ -155,6 +170,10 @@
+ 				}
+ 
+ 				await cline.say("text", content, undefined, block.partial)
++				
++				// Stream B: Text block presented
++				console.log(`[PRESENT-MESSAGE-DEBUG] Text block presented: length=${content?.length}, partial=${block.partial}`)
++				
+ 				break
+ 			}
+ 			case "tool_use":
+@@ -205,6 +224,11 @@
+ 					}
+ 				}
+ 
++				// Stream B: Tool use presentation
++				console.log(`[PRESENT-MESSAGE-DEBUG] Tool use: ${block.name}, partial=${block.partial}, rejected=${cline.didRejectTool}, alreadyUsed=${cline.didAlreadyUseTool}`)
++				debugUtils.onToolExecution(cline, block.name, block.params)
++				stateInspector.captureStateSnapshot(cline, `tool_presentation_${block.name}`)
++				
+ 				if (cline.didRejectTool) {
+ 					// Ignore any tool content after user has rejected tool once.
+ 					if (!block.partial) {
+@@ -332,6 +356,9 @@
+ 					TelemetryService.instance.captureToolUsage(cline.taskId, block.name)
+ 				}
+ 
++				// Stream B: Tool validation
++				console.log(`[PRESENT-MESSAGE-DEBUG] Validating tool: ${block.name}`)
++				
+ 				// Validate tool use before execution.
+ 				const { mode, customModes } = (await cline.providerRef.deref()?.getState()) ?? {}
+ 
+@@ -391,6 +418,9 @@
+ 				}
+ 
+ 				switch (block.name) {
++					// Stream B: Log specific tool execution
++					// Each case will be logged by debugUtils.onToolExecution above
++					
+ 					case "write_to_file":
+ 						await writeToFileTool(cline, block, askApproval, handleError, pushToolResult, removeClosingTag)
+ 						break
+@@ -506,6 +536,11 @@
+ 		// NOTE: When tool is rejected, iterator stream is interrupted and it waits
+ 		// for `userMessageContentReady` to be true. Future calls to present will
+ 		// skip execution since `didRejectTool` and iterate until `contentIndex` is
++		
++		// Stream B: Block completion decision
++		console.log(`[PRESENT-MESSAGE-DEBUG] Block completion: partial=${block.partial}, rejected=${cline.didRejectTool}, alreadyUsed=${cline.didAlreadyUseTool}`)
++		console.log(`[PRESENT-MESSAGE-DEBUG] Progress: ${cline.currentStreamingContentIndex}/${cline.assistantMessageContent.length - 1}`)
++		
+ 		// set to message length and it sets userMessageContentReady to true itself
+ 		// (instead of preemptively doing it in iterator).
+ 		if (!block.partial || cline.didRejectTool || cline.didAlreadyUseTool) {
+@@ -515,6 +550,10 @@
+ 				// continue on and all potential content blocks be presented.
+ 				// Last block is complete and it is finished executing
+ 				cline.userMessageContentReady = true // Will allow `pWaitFor` to continue.
++				
++				// Stream B: Ready for next request
++				console.log(`[PRESENT-MESSAGE-DEBUG] Ready for next request: userMessageContentReady=true`)
++				stateInspector.captureStateSnapshot(cline, "user_message_content_ready")
+ 			}
+ 
+ 			// Call next block if it exists (if not then read stream will call it
+@@ -524,6 +563,10 @@
+ 			cline.currentStreamingContentIndex++
+ 
+ 			if (cline.currentStreamingContentIndex < cline.assistantMessageContent.length) {
++				// Stream B: Recursive presentation call
++				console.log(`[PRESENT-MESSAGE-DEBUG] Calling next block: ${cline.currentStreamingContentIndex}`)
++				stateInspector.captureStateSnapshot(cline, "recursive_presentation_call")
++				
+ 				// There are already more content blocks to stream, so we'll call
+ 				// this function ourselves.
+ 				presentAssistantMessage(cline)
+@@ -533,6 +576,10 @@
+ 
+ 		// Block is partial, but the read stream may have finished.
+ 		if (cline.presentAssistantMessageHasPendingUpdates) {
++			// Stream B: Pending updates
++			console.log(`[PRESENT-MESSAGE-DEBUG] Processing pending updates`)
++			stateInspector.captureStateSnapshot(cline, "pending_updates")
++			
+ 			presentAssistantMessage(cline)
+ 		}
+ 	}
+\ No newline at end of line

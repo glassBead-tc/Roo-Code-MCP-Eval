@@ -24,3 +24,5 @@ telemetry.config.*.json
 
 # Autonomous analysis reports
 autonomous-reports/
+packages/evals/.env.test
+packages/evals/.env.development

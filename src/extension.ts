@@ -58,6 +58,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(outputChannel)
 	outputChannel.appendLine(`${Package.name} extension activated - ${JSON.stringify(Package)}`)
 
+	// Show output channel for debug logging during evaluation
+	if (process.env.ROO_CODE_IPC_SOCKET_PATH) {
+		outputChannel.show(true) // true = preserveFocus
+		outputChannel.appendLine(`[DEBUG] Evaluation mode detected - showing output channel for debug logs`)
+	}
+
 	// Migrate old settings to new
 	await migrateSettings(context, outputChannel)
 

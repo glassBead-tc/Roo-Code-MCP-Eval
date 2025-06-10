@@ -1,0 +1,13 @@
+#!/usr/bin/expect -f
+
+# Automate the interactive setup.sh script
+set timeout 300
+
+spawn ./scripts/setup.sh
+
+# Keep all language selections (press Enter to continue with all selected)
+expect "Type 1-5 to select, 'q' to quit, ⏎ to continue:"
+send "\r"
+
+# Wait for completion
+expect eof
