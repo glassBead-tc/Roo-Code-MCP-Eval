@@ -88,7 +88,7 @@ export async function useMcpToolTool(
 				})
 			}
 
-			const toolResult = await mcpHub?.callTool(server_name, tool_name, parsedArguments)
+			const toolResult = await mcpHub?.callTool(server_name, tool_name, parsedArguments, undefined, cline.taskId)
 
 			// TODO: add progress indicator and ability to parse images and non-text responses
 			const toolResultPretty =

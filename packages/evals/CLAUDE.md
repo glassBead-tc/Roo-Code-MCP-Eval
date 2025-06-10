@@ -140,10 +140,10 @@ Supported languages with test commands:
 
 ```bash
 # Development (.env)
-DATABASE_URL=postgresql://roo_code:password@localhost:5433/roo_code_evals
+DATABASE_URL=postgres://postgres:password@localhost:5432/evals_development
 
 # Testing (.env.test)
-DATABASE_URL=postgresql://roo_code:password@localhost:5433/roo_code_evals_test
+DATABASE_URL=postgres://postgres:password@localhost:5432/evals_test
 ```
 
 ### Integration Points

@@ -13,6 +13,7 @@ export const runs = pgTable("runs", {
 	id: integer().primaryKey().generatedAlwaysAsIdentity(),
 	taskMetricsId: integer("task_metrics_id").references(() => taskMetrics.id),
 	model: text().notNull(),
+	mcpServer: text("mcp_server"),
 	description: text(),
 	settings: jsonb().$type<RooCodeSettings>(),
 	pid: integer(),
@@ -142,8 +143,160 @@ export const mcpRetrievalCalls = pgTable("mcp_retrieval_calls", {
 	request: jsonb("request").notNull(),
 	response: jsonb("response").notNull(),
 	responseSize: integer("response_size").notNull(),
+	duration: integer("duration_ms"),
+	errorMessage: text("error_message"),
+	source: text("source"), // 'global' or 'project'
+	timeout: integer("timeout_ms"),
 	createdAt: timestamp("created_at").notNull().defaultNow(),
 })
+
+/**
+ * MCP connection events
+ */
+export const mcpConnectionEvents = pgTable("mcp_connection_events", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	taskId: integer("task_id").references(() => tasks.id),
+	serverName: text("server_name").notNull(),
+	eventType: text("event_type").notNull(), // 'start', 'established', 'error'
+	source: text("source"), // 'global' or 'project'
+	transport: text("transport"), // transport type used
+	duration: integer("duration_ms"),
+	errorMessage: text("error_message"),
+	createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+/**
+ * MCP resource access events
+ */
+export const mcpResourceEvents = pgTable("mcp_resource_events", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	taskId: integer("task_id").references(() => tasks.id),
+	serverName: text("server_name").notNull(),
+	uri: text("uri").notNull(),
+	eventType: text("event_type").notNull(), // 'start', 'success', 'error'
+	source: text("source"), // 'global' or 'project'
+	duration: integer("duration_ms"),
+	responseSize: integer("response_size"),
+	errorMessage: text("error_message"),
+	createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+/**
+ * AI-generated insights table
+ */
+export const aiInsights = pgTable("ai_insights", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	taskId: integer("task_id").references(() => tasks.id),
+	category: text("category").notNull(), // 'performance', 'quality', 'efficiency', 'reliability'
+	title: text("title").notNull(),
+	description: text("description").notNull(),
+	confidence: real("confidence").notNull(), // 0.0 to 1.0
+	severity: text("severity").notNull(), // 'info', 'warning', 'error', 'critical'
+	evidence: jsonb("evidence").$type<string[]>().notNull(),
+	recommendations: jsonb("recommendations").$type<string[]>().notNull(),
+	contextSnapshot: jsonb("context_snapshot"),
+	detectedAt: timestamp("detected_at").notNull().defaultNow(),
+	acknowledgedAt: timestamp("acknowledged_at"),
+	actionTaken: text("action_taken"),
+})
+
+/**
+ * AI steering recommendations table
+ */
+export const aiSteeringRecommendations = pgTable("ai_steering_recommendations", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	taskId: integer("task_id").references(() => tasks.id),
+	type: text("type").notNull(), // 'pause_task', 'adjust_concurrency', 'switch_server', etc.
+	priority: text("priority").notNull(), // 'low', 'medium', 'high', 'critical'
+	description: text("description").notNull(),
+	expectedImpact: text("expected_impact").notNull(),
+	confidence: real("confidence").notNull(),
+	parameters: jsonb("parameters"),
+	status: text("status").notNull().default("pending"), // 'pending', 'applied', 'ignored', 'failed'
+	appliedAt: timestamp("applied_at"),
+	appliedBy: text("applied_by"), // 'human', 'auto'
+	outcome: text("outcome"),
+	createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
+/**
+ * AI anomaly detections table
+ */
+export const aiAnomalies = pgTable("ai_anomalies", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	taskId: integer("task_id").references(() => tasks.id),
+	type: text("type").notNull(), // 'performance', 'error', 'resource', 'pattern'
+	severity: text("severity").notNull(), // 'low', 'medium', 'high', 'critical'
+	description: text("description").notNull(),
+	confidence: real("confidence").notNull(),
+	detectedValue: real("detected_value"),
+	expectedValue: real("expected_value"),
+	threshold: real("threshold"),
+	context: jsonb("context"),
+	suggestedAction: text("suggested_action"),
+	resolved: boolean("resolved").default(false),
+	resolvedAt: timestamp("resolved_at"),
+	resolutionNote: text("resolution_note"),
+	detectedAt: timestamp("detected_at").notNull().defaultNow(),
+})
+
+/**
+ * AI observer sessions table
+ */
+export const aiObserverSessions = pgTable("ai_observer_sessions", {
+	id: serial("id").primaryKey(),
+	runId: integer("run_id")
+		.references(() => runs.id)
+		.notNull(),
+	observerLevel: text("observer_level").notNull(), // 'basic', 'full', 'autonomous'
+	steeringMode: text("steering_mode"), // 'monitor-only', 'suggest', 'auto'
+	insightsConfig: text("insights_config"), // 'store', 'export', 'realtime'
+	configuration: jsonb("configuration"),
+	startedAt: timestamp("started_at").notNull().defaultNow(),
+	endedAt: timestamp("ended_at"),
+	status: text("status").notNull().default("active"), // 'active', 'completed', 'failed'
+	totalInsights: integer("total_insights").default(0),
+	totalAnomalies: integer("total_anomalies").default(0),
+	totalRecommendations: integer("total_recommendations").default(0),
+	averageConfidence: real("average_confidence"),
+})
+
+/**
+ * Relations for AI tables
+ */
+export const aiInsightsRelations = relations(aiInsights, ({ one }) => ({
+	run: one(runs, { fields: [aiInsights.runId], references: [runs.id] }),
+	task: one(tasks, { fields: [aiInsights.taskId], references: [tasks.id] }),
+}))
+
+export const aiSteeringRecommendationsRelations = relations(aiSteeringRecommendations, ({ one }) => ({
+	run: one(runs, { fields: [aiSteeringRecommendations.runId], references: [runs.id] }),
+	task: one(tasks, { fields: [aiSteeringRecommendations.taskId], references: [tasks.id] }),
+}))
+
+export const aiAnomaliesRelations = relations(aiAnomalies, ({ one }) => ({
+	run: one(runs, { fields: [aiAnomalies.runId], references: [runs.id] }),
+	task: one(tasks, { fields: [aiAnomalies.taskId], references: [tasks.id] }),
+}))
+
+export const aiObserverSessionsRelations = relations(aiObserverSessions, ({ one }) => ({
+	run: one(runs, { fields: [aiObserverSessions.runId], references: [runs.id] }),
+}))
 
 export const schema = {
 	runs,
@@ -155,4 +308,14 @@ export const schema = {
 	toolErrorsRelations,
 	mcpRetrievalBenchmarks,
 	mcpRetrievalCalls,
+	mcpConnectionEvents,
+	mcpResourceEvents,
+	aiInsights,
+	aiInsightsRelations,
+	aiSteeringRecommendations,
+	aiSteeringRecommendationsRelations,
+	aiAnomalies,
+	aiAnomaliesRelations,
+	aiObserverSessions,
+	aiObserverSessionsRelations,
 }

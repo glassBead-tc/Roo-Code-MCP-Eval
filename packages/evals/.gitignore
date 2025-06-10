@@ -1,7 +1,28 @@
-# .env
-!.env.development
-!.env.test
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.template
+!.env.*.sample
+
+# MCP Configuration
+*mcp_config.json
+*mcp-config.json
+mcp_config*.json
+mcp-config*.json
+claude_code_mcp_config.json
+cc_mcp_config.json
+
+# Telemetry configuration
+telemetry.config.json
+telemetry.config.*.json
+!telemetry.config.example.json
 
 # docker
 .docker/*
 !.docker/scripts
+
+# Autonomous analysis reports
+autonomous-reports/
+packages/evals/.env.test
+packages/evals/.env.development

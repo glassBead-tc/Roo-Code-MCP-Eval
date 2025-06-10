@@ -127,3 +127,7 @@ pnpm vsix -- --out ../bin/roo-code.vsix && code --install-extension bin/roo-code
 - Tools return structured responses with status tracking
 - All user-facing strings use i18n system
 - Telemetry events follow consistent naming
+
+## Rules and Guidelines
+
+- Rule: the dates on some of the .md files are unreliable. you should use your git tool for accuracy on when a file was actually created.

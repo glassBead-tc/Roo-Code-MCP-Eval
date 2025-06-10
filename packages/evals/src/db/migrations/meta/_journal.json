@@ -8,6 +8,27 @@
 			"when": 1748937674449,
 			"tag": "0000_young_trauma",
 			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "7",
+			"when": 1749284988782,
+			"tag": "0001_living_mariko_yashida",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1749296508602,
+			"tag": "0002_fearless_wild_child",
+			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "7",
+			"when": 1749401109137,
+			"tag": "0003_remarkable_white_tiger",
+			"breakpoints": true
 		}
 	]
 }

@@ -68,6 +68,7 @@ export enum TaskCommandName {
 	StartNewTask = "StartNewTask",
 	CancelTask = "CancelTask",
 	CloseTask = "CloseTask",
+	SetTaskContext = "SetTaskContext",
 }
 
 export const taskCommandSchema = z.discriminatedUnion("commandName", [
@@ -87,6 +88,16 @@ export const taskCommandSchema = z.discriminatedUnion("commandName", [
 	z.object({
 		commandName: z.literal(TaskCommandName.CloseTask),
 		data: z.string(),
+	}),
+	z.object({
+		commandName: z.literal(TaskCommandName.SetTaskContext),
+		data: z.object({
+			taskId: z.number(), // Database task ID (integer)
+			rooTaskId: z.string(), // Roo's internal task ID (string)
+			runId: z.number(),
+			mcpServer: z.string(),
+			userIntent: z.string(),
+		}),
 	}),
 ])
 
@@ -172,6 +183,19 @@ export const taskEventSchema = z.discriminatedUnion("eventName", [
 export type TaskEvent = z.infer<typeof taskEventSchema>
 
 /**
+ * TaskContextConfirmation
+ */
+
+export const taskContextConfirmationSchema = z.object({
+	taskId: z.number(),
+	rooTaskId: z.string(),
+	success: z.boolean(),
+	error: z.string().optional(),
+})
+
+export type TaskContextConfirmationMessage = z.infer<typeof taskContextConfirmationSchema>
+
+/**
  * IpcMessage
  */
 
@@ -181,6 +205,7 @@ export enum IpcMessageType {
 	Ack = "Ack",
 	TaskCommand = "TaskCommand",
 	TaskEvent = "TaskEvent",
+	TaskContextConfirmation = "TaskContextConfirmation",
 }
 
 export enum IpcOrigin {
@@ -206,6 +231,11 @@ export const ipcMessageSchema = z.discriminatedUnion("type", [
 		relayClientId: z.string().optional(),
 		data: taskEventSchema,
 	}),
+	z.object({
+		type: z.literal(IpcMessageType.TaskContextConfirmation),
+		origin: z.literal(IpcOrigin.Server),
+		data: taskContextConfirmationSchema,
+	}),
 ])
 
 export type IpcMessage = z.infer<typeof ipcMessageSchema>
@@ -220,6 +250,7 @@ export type IpcClientEvents = {
 	[IpcMessageType.Ack]: [data: Ack]
 	[IpcMessageType.TaskCommand]: [data: TaskCommand]
 	[IpcMessageType.TaskEvent]: [data: TaskEvent]
+	[IpcMessageType.TaskContextConfirmation]: [data: TaskContextConfirmationMessage]
 }
 
 /**
@@ -231,4 +262,5 @@ export type IpcServerEvents = {
 	[IpcMessageType.Disconnect]: [clientId: string]
 	[IpcMessageType.TaskCommand]: [clientId: string, data: TaskCommand]
 	[IpcMessageType.TaskEvent]: [relayClientId: string | undefined, data: TaskEvent]
+	[IpcMessageType.TaskContextConfirmation]: [data: TaskContextConfirmationMessage]
 }

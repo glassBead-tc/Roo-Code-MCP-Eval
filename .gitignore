@@ -29,6 +29,8 @@ docs/_site/
 .env
 .env.*
 !.env.*.sample
+!.env.example
+!.env.template
 
 # Logging
 logs
@@ -44,8 +46,61 @@ logs
 .qodo/
 .vercel
 
+# MCP Configuration
+*mcp_config.json
+
+# OpenTelemetry JS
+opentelemetry-js/
+*mcp-config.json
+mcp_config*.json
+mcp-config*.json
 claude_code_mcp_config.json
+cc_mcp_config.json
+
+# AI and Claude directories
 ai_docs/
 .claude/
-claude_code_mcp_config.json
-ai_docs/tracing/OpenTelemetry
+
+# Personal files and conversations
+personal/
+
+# Additional debugging and investigation artifacts
+peragus-app/
+trees/
+smithery-test/
+evals/
+Roo-Code-Referene/
+autoimprovement-paper.md
+packages/evals/src/autonomous/
+packages/evals/AI_EVALUATION_INTEGRATION_GUIDE.md
+
+# Socket files
+*.sock
+roo-code-ipc-*.sock
+
+# Debug and test logs
+*.log
+packages/evals/phase*.log
+packages/evals/quick-test.log
+debug-output.log
+
+# Debug scripts and utilities
+debug-webview-launch.js
+test-otel-tracing.js
+test-telemetry-integration.js
+test-tracing.js
+
+# MCP server copies and external projects
+exa-mcp-server/
+exa-mcp-server-copy/
+
+# Patch files
+*.patch
+present-message-instrumentation.patch
+task-instrumentation.patch
+
+# VS Code workspaces from debugging
+*.roo-cline:debug
+
+packages/evals/.env.test
+packages/evals/.env.development
