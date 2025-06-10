@@ -24,6 +24,7 @@
 		"test:telemetry:simple": "node --loader tsx src/telemetry/test-without-db.ts"
 	},
 	"dependencies": {
+		"@dotenvx/dotenvx": "^1.21.2",
 		"@modelcontextprotocol/sdk": "^1.9.0",
 		"@opentelemetry/api": "^1.9.0",
 		"@opentelemetry/exporter-trace-otlp-http": "^0.52.0",
@@ -42,6 +43,7 @@
 		"p-wait-for": "^5.0.2",
 		"postgres": "^3.4.7",
 		"ps-tree": "^1.2.0",
+		"tsx": "^4.19.3",
 		"uuid": "^9.0.0",
 		"zod": "^3.24.2"
 	},

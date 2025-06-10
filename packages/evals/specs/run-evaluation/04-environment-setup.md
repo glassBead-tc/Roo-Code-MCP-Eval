@@ -53,18 +53,6 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_SERVICE_NAME=roo-code-mcp-eval
 ```
 
-### Headless Mode Configuration
-
-For running without GUI windows:
-
-```bash
-# Enable headless mode (requires Xvfb)
-export ROO_HEADLESS=true
-
-# Set virtual display (if needed)
-export DISPLAY=:99
-```
-
 ### Database Configuration
 
 If using non-default database settings:
@@ -116,9 +104,6 @@ OTEL_TRACES_EXPORTER=console
 
 # Database
 DATABASE_URL=postgres://postgres:password@localhost:5432/evals_development
-
-# Headless Mode (uncomment to enable)
-# ROO_HEADLESS=true
 EOF
 ```
 
@@ -151,7 +136,6 @@ optional_vars=(
   "EXA_API_KEY"
   "FIRECRAWL_API_KEY"
   "OTEL_LOG_LEVEL"
-  "ROO_HEADLESS"
 )
 
 echo "Checking required environment variables..."
@@ -200,7 +184,6 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://telemetry-collector:4318
 ### CI/CD Pipeline
 
 ```bash
-export ROO_HEADLESS=true
 export ROO_EVAL_MODE=true
 export DATABASE_URL=$CI_DATABASE_URL
 export OPENROUTER_API_KEY=$CI_OPENROUTER_KEY

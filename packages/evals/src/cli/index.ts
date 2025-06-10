@@ -31,9 +31,122 @@ import {
 } from "../db/index.js"
 import { type ExerciseLanguage, exerciseLanguages, exercisesPath, getExercisesForLanguage } from "../exercises/index.js"
 import { initializeOpenTelemetry } from "../telemetry/initializeOtel.js"
+import {
+	EvalObserverIntegration,
+	createEvalObserverIntegration,
+	defaultIntegrationConfig,
+} from "../benchmark/EvalObserverIntegration.js"
 
 type TaskResult = { success: boolean }
 type TaskPromise = Promise<TaskResult>
+
+interface AIConfig {
+	observer?: string
+	steering?: string
+	insights?: string
+	configPath?: string
+}
+
+/**
+ * Create AI observer integration configuration from CLI arguments
+ */
+function createAIConfig(args: AIConfig): any {
+	const config = { ...defaultIntegrationConfig }
+
+	// Parse AI observer level
+	if (args.observer) {
+		config.enabled = true
+		switch (args.observer.toLowerCase()) {
+			case "basic":
+				config.observerConfig!.features!.anomalyDetection = true
+				config.observerConfig!.features!.performanceAnalysis = true
+				config.observerConfig!.features!.systemHealthMonitoring = true
+				config.observerConfig!.features!.steeringRecommendations = false
+				config.observerConfig!.features!.patternRecognition = false
+				break
+			case "full":
+				config.observerConfig!.features!.anomalyDetection = true
+				config.observerConfig!.features!.performanceAnalysis = true
+				config.observerConfig!.features!.systemHealthMonitoring = true
+				config.observerConfig!.features!.steeringRecommendations = true
+				config.observerConfig!.features!.patternRecognition = true
+				break
+			case "autonomous":
+				config.observerConfig!.features!.anomalyDetection = true
+				config.observerConfig!.features!.performanceAnalysis = true
+				config.observerConfig!.features!.systemHealthMonitoring = true
+				config.observerConfig!.features!.steeringRecommendations = true
+				config.observerConfig!.features!.patternRecognition = true
+				config.orchestratorConfig!.enableAutonomousAnalysis = true
+				config.orchestratorConfig!.enableContinuousLearning = true
+				break
+			default:
+				console.warn(`Unknown AI observer level: ${args.observer}. Using 'basic'.`)
+				config.observerConfig!.features!.anomalyDetection = true
+				config.observerConfig!.features!.performanceAnalysis = true
+				break
+		}
+	}
+
+	// Parse AI steering level
+	if (args.steering) {
+		config.enabled = true
+		switch (args.steering.toLowerCase()) {
+			case "monitor-only":
+				config.orchestratorConfig!.enableSteeringRecommendations = false
+				config.observerConfig!.integration!.enableSteering = false
+				break
+			case "suggest":
+				config.orchestratorConfig!.enableSteeringRecommendations = true
+				config.observerConfig!.integration!.enableSteering = false
+				break
+			case "auto":
+				config.orchestratorConfig!.enableSteeringRecommendations = true
+				config.observerConfig!.integration!.enableSteering = true
+				config.observerConfig!.integration!.autoImplementRecommendations = true
+				break
+			default:
+				console.warn(`Unknown AI steering level: ${args.steering}. Using 'monitor-only'.`)
+				break
+		}
+	}
+
+	// Parse AI insights configuration
+	if (args.insights) {
+		config.enabled = true
+		switch (args.insights.toLowerCase()) {
+			case "store":
+				config.persistenceConfig!.enableInsightStorage = true
+				config.persistenceConfig!.enableRecommendationTracking = true
+				break
+			case "export":
+				config.persistenceConfig!.enableInsightStorage = true
+				config.orchestratorConfig!.dataExportInterval = 15 // 15 minutes
+				break
+			case "realtime":
+				config.persistenceConfig!.enableInsightStorage = false
+				config.orchestratorConfig!.dataExportInterval = 5 // 5 minutes
+				break
+			default:
+				console.warn(`Unknown AI insights mode: ${args.insights}. Using 'store'.`)
+				config.persistenceConfig!.enableInsightStorage = true
+				break
+		}
+	}
+
+	// Load custom configuration if provided
+	if (args.configPath) {
+		try {
+			const customConfig = JSON.parse(fs.readFileSync(args.configPath, "utf-8"))
+			Object.assign(config, customConfig)
+			console.log(`Loaded AI configuration from: ${args.configPath}`)
+		} catch (error) {
+			console.warn(`Failed to load AI configuration from ${args.configPath}:`, error)
+		}
+	}
+
+	return config
+}
 
 const TASK_START_DELAY = 10 * 1_000
 const TASK_TIMEOUT = 5 * 60 * 1_000
@@ -43,6 +156,7 @@ async function setTaskContextWithConfirmation(
 	task: Task,
 	rooTaskId: string,
 	client: IpcClient,
+	run: Run,
 	otel: Awaited<ReturnType<typeof initializeOpenTelemetry>>,
 ): Promise<boolean> {
 	return new Promise((resolve) => {
@@ -76,8 +190,9 @@ async function setTaskContextWithConfirmation(
 					taskId: task.id, // Database integer ID
 					rooTaskId: rooTaskId, // Roo's string ID
 					runId: task.runId,
-					mcpServer: "default", // TODO: get from task config
-					userIntent: "exercise", // TODO: get from task config
+					mcpServer: run.mcpServer || "unknown",
+					userIntent: task.exercise,
+					otlpEndpoint: `http://localhost:${otel.port}`,
 				},
 			},
 		})
@@ -92,16 +207,50 @@ const testCommands: Record<ExerciseLanguage, { commands: string[]; timeout?: num
 	rust: { commands: ["cargo test"] }, // timeout 15s bash -c "cd '$dir' && cargo test > /dev/null 2>&1"
 }
 
-const runEvals = async (id: number) => {
+const runEvals = async (id: number, aiConfig?: any) => {
+	// Initialize AI observer integration if enabled
+	let aiIntegration: EvalObserverIntegration | undefined
+	if (aiConfig?.enabled) {
+		console.log("Initializing AI observer integration...")
+		aiIntegration = createEvalObserverIntegration(aiConfig)
+		await aiIntegration.initialize()
+		console.log("AI observer integration initialized")
+	}
+
 	// Initialize OpenTelemetry with extensible configuration
 	const otel = await initializeOpenTelemetry({
 		debug: process.env.OTEL_LOG_LEVEL === "debug",
 		env: (process.env.NODE_ENV as "development" | "production" | "test") || "development",
 	})
+
+	// Create enhanced benchmark processor with AI integration
 	const mcpBenchmarkProcessor = otel.mcpProcessor
+	if (aiIntegration && mcpBenchmarkProcessor) {
+		// Replace the processor with AI-enhanced version
+		const { McpBenchmarkProcessor } = await import("../benchmark/McpBenchmarkProcessor.js")
+		const enhancedProcessor = new McpBenchmarkProcessor((mcpBenchmarkProcessor as any).db, aiIntegration)
+		otel.mcpProcessor = enhancedProcessor
+	}
 
 	const run = await findRun(id)
 	const tasks = await getTasks(run.id)
+
+	// Start AI observer session if enabled
+	if (aiIntegration?.isEnabled()) {
+		const observerLevel = aiConfig.observerConfig?.features?.anomalyDetection
+			? aiConfig.orchestratorConfig?.enableAutonomousAnalysis
+				? "autonomous"
+				: "full"
+			: "basic"
+		const steeringMode = aiConfig.orchestratorConfig?.enableSteeringRecommendations
+			? aiConfig.observerConfig?.integration?.enableSteering
+				? "auto"
+				: "suggest"
+			: "monitor-only"
+		const insightsConfig = aiConfig.persistenceConfig?.enableInsightStorage ? "store" : "realtime"
+
+		await aiIntegration.startObserverSession(run.id, observerLevel, steeringMode, insightsConfig)
+	}
 
 	if (!tasks[0]) {
 		throw new Error("No tasks found.")
@@ -119,7 +268,7 @@ const runEvals = async (id: number) => {
 	const runningPromises: TaskPromise[] = []
 
 	const processTask = async (runId: number, task: Task, delay = 0) => {
-		await mcpBenchmarkProcessor.startTaskBenchmark(task.id, runId, "default_mcp_server", "default_user_intent") // Placeholders for server and intent
+		await mcpBenchmarkProcessor.startTaskBenchmark(task.id, runId, run.mcpServer || "unknown", task.exercise)
 		if (task.finishedAt === null) {
 			await new Promise((resolve) => setTimeout(resolve, delay))
 			await runExercise({ run, task, server, otel })
@@ -172,6 +321,36 @@ const runEvals = async (id: number) => {
 	await execa({ cwd: exercisesPath })`git add .`
 	await execa({ cwd: exercisesPath })`git commit -m ${`Run #${run.id}`} --no-verify`
 
+	// Generate AI report if enabled
+	if (aiIntegration?.isEnabled()) {
+		try {
+			const aiReport = await aiIntegration.generateAIReport(run.id)
+			console.log("AI Evaluation Report:")
+			console.log("===================")
+			console.log(`Total Insights: ${aiReport.summary.totalInsights}`)
+			console.log(`Average Confidence: ${(aiReport.summary.averageConfidence * 100).toFixed(1)}%`)
+			console.log(`Critical Issues: ${aiReport.summary.criticalIssues}`)
+			console.log(`Actionable Recommendations: ${aiReport.summary.actionableRecommendations}`)
+
+			if (aiReport.insights.length > 0) {
+				console.log("\nKey Insights:")
+				aiReport.insights.slice(0, 5).forEach((insight, i) => {
+					console.log(
+						`${i + 1}. ${insight.title} (${insight.category}, ${(insight.confidence * 100).toFixed(0)}% confidence)`,
+					)
+					console.log(`   ${insight.description}`)
+				})
+			}
+		} catch (error) {
+			console.warn("Failed to generate AI report:", error)
+		}
+	}
+
+	// Shutdown AI integration
+	if (aiIntegration) {
+		await aiIntegration.shutdown()
+	}
+
 	// Shutdown OpenTelemetry
 	await otel.shutdown()
 }
@@ -191,7 +370,8 @@ const runExercise = async ({
 	const prompt = fs.readFileSync(path.resolve(exercisesPath, `prompts/${language}.md`), "utf-8")
 	const dirname = path.dirname(run.socketPath)
 	const workspacePath = path.resolve(exercisesPath, language, exercise)
-	const taskSocketPath = path.resolve(dirname, `${dirname}/task-${task.id}.sock`)
+	const taskSocketPath =
+		process.env.ROO_CODE_IPC_SOCKET_PATH || path.resolve(dirname, `${dirname}/task-${task.id}.sock`)
 
 	// Inject foot gun system prompt if present
 	if (process.env.FOOTGUN_SYSTEM_PROMPT) {
@@ -207,27 +387,69 @@ const runExercise = async ({
 	// Don't await execa and store result as subprocess.
 	// subprocess.stdout.pipe(process.stdout)
 
-	console.log(`${Date.now()} [cli#runExercise] Starting headless VS Code at ${workspacePath}`)
+	console.log(`${Date.now()} [cli#runExercise] Starting VS Code with xvfb at ${workspacePath}`)
 
 	const controller = new AbortController()
 	const cancelSignal = controller.signal
 
-	// Run VS Code in headless mode for extension-only functionality
+	// Run VS Code with virtual display in Docker containers
 	// Use code command directly to work in Docker containers
 	const vscodeCommand = process.env.VSCODE_PATH || "code"
-	const codeCommand = `${vscodeCommand} --headless --disable-workspace-trust --folder="${workspacePath}"`
+	const codeCommand = `xvfb-run -a env ROO_CODE_IPC_SOCKET_PATH="${taskSocketPath}" ${vscodeCommand} --disable-workspace-trust "${workspacePath}"`
+
+	console.log(`${Date.now()} [cli#runExercise] Running command: ${codeCommand}`)
+	console.log(`${Date.now()} [cli#runExercise] Socket path: ${taskSocketPath}`)
 
 	const subprocess = execa({
-		env: {
-			...process.env,
-			ROO_CODE_IPC_SOCKET_PATH: taskSocketPath,
-		},
 		shell: "/bin/bash",
 		cancelSignal,
 	})`${codeCommand}`
 
-	// If debugging:
-	// subprocess.stdout.pipe(process.stdout)
+	// For debugging VS Code output:
+	subprocess.stdout.pipe(process.stdout)
+	subprocess.stderr.pipe(process.stderr)
+
+	// Check if environment variable is being set
+	console.log(`${Date.now()} [cli#runExercise] Environment variables:`)
+	console.log(`ROO_CODE_IPC_SOCKET_PATH=${process.env.ROO_CODE_IPC_SOCKET_PATH}`)
+	console.log(`DISPLAY=${process.env.DISPLAY}`)
+
+	// Check if VS Code process is actually running
+	setTimeout(async () => {
+		console.log(`${Date.now()} [cli#runExercise] Checking if VS Code process exists...`)
+		try {
+			const { execSync } = await import("child_process")
+			const processes = execSync("ps aux | grep code | grep -v grep", { encoding: "utf8" })
+			console.log(`${Date.now()} [cli#runExercise] VS Code processes:`)
+			console.log(processes)
+		} catch (err: any) {
+			console.log(`${Date.now()} [cli#runExercise] No VS Code processes found: ${err.message}`)
+		}
+
+		// Test if VS Code command works at all
+		console.log(`${Date.now()} [cli#runExercise] Testing VS Code command directly...`)
+		try {
+			const { execSync } = await import("child_process")
+			const result = execSync("code --version", { encoding: "utf8", timeout: 5000 })
+			console.log(`${Date.now()} [cli#runExercise] VS Code version: ${result}`)
+		} catch (err: any) {
+			console.log(`${Date.now()} [cli#runExercise] VS Code command failed: ${err.message}`)
+		}
+	}, 1000)
+
+	// Check if socket file is created
+	setTimeout(() => {
+		console.log(`${Date.now()} [cli#runExercise] Checking if socket exists: ${taskSocketPath}`)
+		import("fs").then((fs) => {
+			fs.access(taskSocketPath, (err: any) => {
+				if (err) {
+					console.log(`${Date.now()} [cli#runExercise] Socket file does not exist: ${err.message}`)
+				} else {
+					console.log(`${Date.now()} [cli#runExercise] Socket file exists!`)
+				}
+			})
+		})
+	}, 2000)
 
 	// Give VSCode some time to spawn before connecting to its unix socket.
 	await new Promise((resolve) => setTimeout(resolve, 3_000))
@@ -341,7 +563,7 @@ const runExercise = async ({
 		const generatedRooTaskId = uuidv4()
 
 		// Set task context and wait for confirmation
-		const contextSet = await setTaskContextWithConfirmation(task, generatedRooTaskId, client, otel)
+		const contextSet = await setTaskContextWithConfirmation(task, generatedRooTaskId, client, run, otel)
 		if (!contextSet) {
 			console.error(`Failed to set task context for task ${task.id}`)
 			client.disconnect()
@@ -506,11 +728,34 @@ const createAndRunEvals = async (args: {
 	exercise?: string
 	concurrent?: number
 	description?: string
+	aiObserver?: string
+	aiSteering?: string
+	aiInsights?: string
+	aiConfig?: string
 }) => {
 	const model = args.model || "claude-3-5-haiku-20241022"
 	const concurrency = args.concurrent || 2
 	const includeLanguages = args.include ? (args.include.split(",") as ExerciseLanguage[]) : [...exerciseLanguages]
 	const excludeLanguages = args.exclude ? (args.exclude.split(",") as ExerciseLanguage[]) : []
+
+	// Create AI configuration from CLI arguments
+	const aiConfig = createAIConfig({
+		observer: args.aiObserver,
+		steering: args.aiSteering,
+		insights: args.aiInsights,
+		configPath: args.aiConfig,
+	})
+
+	// Log AI configuration if enabled
+	if (aiConfig.enabled) {
+		console.log("AI-Native Evaluation Features Enabled:")
+		console.log("=====================================")
+		if (args.aiObserver) console.log(`• Observer Level: ${args.aiObserver}`)
+		if (args.aiSteering) console.log(`• Steering Mode: ${args.aiSteering}`)
+		if (args.aiInsights) console.log(`• Insights Config: ${args.aiInsights}`)
+		if (args.aiConfig) console.log(`• Custom Config: ${args.aiConfig}`)
+		console.log("")
+	}
 
 	// Validate languages
 	for (const lang of includeLanguages) {
@@ -584,8 +829,8 @@ const createAndRunEvals = async (args: {
 		}
 	}
 
-	// Run the evaluation
-	return runEvals(run.id)
+	// Run the evaluation with AI configuration
+	return runEvals(run.id, aiConfig)
 }
 
 const main = async () => {
@@ -637,11 +882,45 @@ const main = async () => {
 					short: "d",
 					description: "Description for the run",
 				}),
+				// AI Observer flags
+				aiObserver: option({
+					type: optional(string),
+					long: "ai-observer",
+					description:
+						"Enable AI observation with level: 'basic', 'full', or 'autonomous' (default: disabled)",
+				}),
+				aiSteering: option({
+					type: optional(string),
+					long: "ai-steering",
+					description:
+						"Enable AI steering capabilities: 'monitor-only', 'suggest', or 'auto' (default: disabled)",
+				}),
+				aiInsights: option({
+					type: optional(string),
+					long: "ai-insights",
+					description: "AI insights configuration: 'store', 'export', or 'realtime' (default: disabled)",
+				}),
+				aiConfig: option({
+					type: optional(string),
+					long: "ai-config",
+					description: "Path to AI observer configuration file",
+				}),
 			},
 			handler: async (args) => {
-				// If runId is provided, just run the existing evaluation
+				// Create AI configuration from CLI arguments (for both new and existing runs)
+				const aiConfig = createAIConfig({
+					observer: args.aiObserver,
+					steering: args.aiSteering,
+					insights: args.aiInsights,
+					configPath: args.aiConfig,
+				})
+
+				// If runId is provided, just run the existing evaluation with AI config
 				if (args.runId !== undefined) {
-					return runEvals(args.runId)
+					if (aiConfig.enabled) {
+						console.log("AI features enabled for existing run", args.runId)
+					}
+					return runEvals(args.runId, aiConfig)
 				}
 
 				// Otherwise, create a new run with the provided options

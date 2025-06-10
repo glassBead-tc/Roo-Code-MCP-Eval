@@ -42,25 +42,18 @@ The system currently tracks these MCP servers:
 
 ## Execution Modes
 
-### 1. **Docker Mode** (Recommended for servers)
+### 1. **Docker Mode** (Recommended)
 
-- Runs VS Code in headless mode using Xvfb
-- No GUI windows appear
-- Stable and resource-efficient
+- Fully isolated containerized execution
+- No GUI dependencies
+- Consistent and reproducible environment
 - Limited to concurrency of 1
 
-### 2. **Local Headless Mode** (Recommended for local development)
+### 2. **Standard Mode** (For debugging)
 
-- Uses Xvfb on your local machine
-- No flashing windows
+- Direct execution with headless VS Code
+- Useful for development and debugging
 - Can run with higher concurrency
-- Requires Xvfb installation
-
-### 3. **Standard Mode** (For debugging)
-
-- Opens actual VS Code windows
-- Useful for watching execution
-- Can be resource-intensive with high concurrency
 
 ## Prerequisites Checklist
 
@@ -71,7 +64,7 @@ Before running MCP evaluations, ensure you have:
 - [ ] PNPM package manager
 - [ ] OpenRouter API key
 - [ ] At least one MCP server configured in VS Code
-- [ ] (For headless mode) Xvfb installed
+- [ ] (For Docker mode) Docker installed
 - [ ] Built the Roo Code extension (.vsix file)
 
 ## Guide Structure
@@ -104,8 +97,7 @@ pnpm db:push
 # Build project
 pnpm build
 
-# Run evaluation (headless)
-export ROO_HEADLESS=true
+# Run evaluation
 export OPENROUTER_API_KEY=your_key
 export ROO_EVAL_MODE=true
 pnpm cli --model claude-3-5-haiku --concurrent 2

@@ -17,8 +17,7 @@ pnpm db:push
 # 3. Build project
 pnpm build
 
-# 4. Run evaluation (headless mode)
-export ROO_HEADLESS=true
+# 4. Run evaluation
 export OPENROUTER_API_KEY=your_key
 export ROO_EVAL_MODE=true
 pnpm cli --model claude-3-5-haiku --concurrent 2
@@ -36,7 +35,7 @@ The guide is organized into 8 sequential steps:
 - Introduction to MCP evaluation
 - Architecture overview
 - Prerequisites checklist
-- Execution modes (Docker, headless, standard)
+- Execution modes (Docker, standard)
 
 ### [01-database-setup.md](./01-database-setup.md)
 
@@ -69,7 +68,7 @@ The guide is organized into 8 sequential steps:
 ### [05-run-evaluation.md](./05-run-evaluation.md)
 
 - Command-line options and arguments
-- Execution modes (headless, Docker, standard)
+- Execution modes (Docker, standard)
 - Model selection and concurrency
 - Language filtering
 
@@ -115,9 +114,8 @@ For each MCP tool call:
 
 ### Execution Modes
 
-1. **Docker Mode** - Fully isolated, headless execution
-2. **Local Headless** - Uses Xvfb for GUI-free execution
-3. **Standard Mode** - Opens VS Code windows (for debugging)
+1. **Docker Mode** - Fully isolated, containerized execution (recommended)
+2. **Standard Mode** - Direct execution with headless VS Code (for debugging)
 
 ## Common Commands
 
@@ -145,10 +143,10 @@ Common issues and solutions:
     - Check `ROO_EVAL_MODE=true` is set
     - Ensure at least one tracked server has valid API key
 
-2. **VS Code windows flashing**
+2. **VS Code GUI appearing**
 
-    - Install Xvfb and set `ROO_HEADLESS=true`
-    - Or use Docker mode for complete isolation
+    - Use Docker mode for complete isolation (recommended)
+    - The CLI now uses headless VS Code by default
 
 3. **Database connection errors**
     - Verify PostgreSQL is running: `docker ps`
