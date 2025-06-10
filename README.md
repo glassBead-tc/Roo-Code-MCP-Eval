@@ -12,11 +12,11 @@ English • [Català](locales/ca/README.md) • [Deutsch](locales/de/README.md) 
 </div>
 <br>
 <div align="center">
-  <h1>Roo Code (prev. Roo Cline)</h1>
+  <h1>Roo Code MCP Telemetry Integration Fork</h1>
   <p align="center">
   <img src="https://media.githubusercontent.com/media/RooCodeInc/Roo-Code/main/src/assets/docs/demo.gif" width="100%" />
   </p>
-  <p>Connect with developers, contribute ideas, and stay ahead with the latest AI-powered coding tools.</p>
+  <p><strong>Experimental Fork:</strong> Integrating Model Context Protocol (MCP) telemetry with AI agent evaluation systems.</p>
   
   <a href="https://discord.gg/roocode" target="_blank"><img src="https://img.shields.io/badge/Join%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join Discord"></a>
   <a href="https://www.reddit.com/r/RooCode/" target="_blank"><img src="https://img.shields.io/badge/Join%20Reddit-FF4500?style=for-the-badge&logo=reddit&logoColor=white" alt="Join Reddit"></a>
@@ -33,6 +33,54 @@ English • [Català](locales/ca/README.md) • [Deutsch](locales/de/README.md) 
 <a href="https://docs.roocode.com" target="_blank"><img src="https://img.shields.io/badge/Documentation-6B46C1?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Documentation"></a>
 
 </div>
+
+## About This Fork
+
+This is a **research implementation** of **Model Context Protocol (MCP) telemetry integration** with Roo Code's AI agent evaluation system, enabling comprehensive monitoring and analysis of autonomous coding agent performance.
+
+### Technical Accomplishments
+
+**✅ Infrastructure Integration**
+
+- Successfully integrated MCP telemetry with VS Code extension architecture
+- Implemented OpenTelemetry distributed tracing across AI agent workflows
+- Built evaluation harness with Docker containerization and headless VS Code execution
+- Established IPC communication between evaluation CLI and extension
+
+**✅ Telemetry Data Pipeline**
+
+- MCP server integration for standardized telemetry data exchange
+- Real-time capture of agent decision points, tool usage, and performance metrics
+- Distributed tracing spans across multiple system processes
+- Comprehensive logging and instrumentation framework
+
+**✅ Evaluation System Enhancement**
+
+- Extended base evaluation framework with telemetry capabilities
+- AI observer integration for workflow analysis
+- Benchmark processing with detailed performance measurement
+- Systematic reproduction and testing infrastructure
+
+### Current Challenge
+
+**Primary Issue:** AI agent workflow completion - agents perform comprehensive analysis but stop before implementation phase, marking tasks as complete without generating expected code artifacts.
+
+📋 **[Detailed Issue Report](AI_AGENT_WORKFLOW_COMPLETION_ISSUE.md)** - Comprehensive analysis, investigation findings, and current debugging status.
+
+### Technical Complexity
+
+This integration addresses significant challenges in **distributed AI system observability**:
+
+- Coordinating telemetry across multiple processes without disrupting agent decision-making
+- Managing complex initialization sequences across VS Code extension, Docker containers, and MCP protocols
+- Debugging distributed workflows spanning IPC, OpenTelemetry, and AI provider APIs
+- Pioneering integration patterns for MCP + VS Code extensions (limited existing examples)
+
+The work demonstrates practical advancement in **agentic system monitoring** - capturing detailed behavioral data from autonomous AI agents while maintaining their core functionality.
+
+---
+
+## Base Roo Code Capabilities
 
 **Roo Code** is an AI-powered **autonomous coding agent** that lives in your editor. It can:
 

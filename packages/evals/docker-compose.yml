@@ -21,6 +21,7 @@ services:
       - postgres
     environment:
       - DATABASE_URL=postgres://postgres:password@postgres:5432/evals_development
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
     volumes:
       - /tmp:/tmp  # For IPC sockets
     command: pnpm cli --exercise two-bucket --include javascript

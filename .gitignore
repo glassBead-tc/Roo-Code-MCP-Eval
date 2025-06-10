@@ -61,5 +61,46 @@ cc_mcp_config.json
 ai_docs/
 .claude/
 
+# Personal files and conversations
+personal/
+
+# Additional debugging and investigation artifacts
+peragus-app/
+trees/
+smithery-test/
+evals/
+Roo-Code-Referene/
+autoimprovement-paper.md
+packages/evals/src/autonomous/
+packages/evals/AI_EVALUATION_INTEGRATION_GUIDE.md
+
+# Socket files
+*.sock
+roo-code-ipc-*.sock
+
+# Debug and test logs
+*.log
+packages/evals/phase*.log
+packages/evals/quick-test.log
+debug-output.log
+
+# Debug scripts and utilities
+debug-webview-launch.js
+test-otel-tracing.js
+test-telemetry-integration.js
+test-tracing.js
+
+# MCP server copies and external projects
+exa-mcp-server/
+exa-mcp-server-copy/
+
+# Patch files
+*.patch
+present-message-instrumentation.patch
+task-instrumentation.patch
+
+# VS Code workspaces from debugging
+*.roo-cline:debug
+
 packages/evals/.env.test
 packages/evals/.env.development

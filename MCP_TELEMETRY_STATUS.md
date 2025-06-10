@@ -15,7 +15,7 @@
 
 Latest MCP benchmark entries:
 
-- Most recent: 2025-06-08 19:55:38
+- Most recent: [Latest timestamp]
 - Server: `default_mcp_server`
 - User Intent: `default_user_intent`
 
