@@ -214,7 +214,7 @@ We use [changesets](https://github.com/changesets/changesets) for versioning and
 
 ## Contributing
 
-We love community contributions! Get started by reading our [CONTRIBUTING.md](CONTRIBUTING.md).
+We love community contributions! Get started by reading our [CONTRIBUTING.md](docs/project/CONTRIBUTING.md).
 
 ---
 
