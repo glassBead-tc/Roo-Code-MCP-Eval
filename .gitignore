@@ -59,7 +59,6 @@ cc_mcp_config.json
 
 # AI and Claude directories
 ai_docs/
-.claude/
 
 # Personal files and conversations
 personal/
