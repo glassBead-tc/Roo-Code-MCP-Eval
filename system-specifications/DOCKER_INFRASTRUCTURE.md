@@ -237,8 +237,8 @@ The evaluation system uses multiple environment configuration files:
 
 ```bash
 DATABASE_URL=postgres://postgres:password@localhost:5432/evals_test
-MEM0_API_KEY=m0-KSdsOh6XdeGSBGlhCh5wqW4aoVv58DyE6BT0Wp9
-OPENROUTER_API_KEY=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
+MEM0_API_KEY=your_mem0_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 ROO_EVAL_MODE=true
 ROO_CODE_IPC_SOCKET_PATH=/tmp/roo-code-eval.sock
 ```
